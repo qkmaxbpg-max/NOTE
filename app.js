@@ -40,30 +40,10 @@ function fmtAmt(n){return(n<0?'－':'')+fmtN(n);}
 function cvt(n){return st.ccy==='USD'?Math.round(n/st.fxRate):Math.round(n);}
 function ccySym(){return st.ccy==='USD'?'US$':'NT$';}
 
-// ── CORS Proxy with fallback ──
-var CORS_PROXIES=[
-  'https://corsproxy.io/?url=',
-  'https://api.allorigins.win/raw?url=',
-  'https://api.codetabs.com/v1/proxy?quest='
-];
-function corsGet(url){
-  var idx=0;
-  function tryNext(){
-    if(idx>=CORS_PROXIES.length) return Promise.reject(new Error('all proxies failed'));
-    var proxy=CORS_PROXIES[idx++];
-    return fetch(proxy+encodeURIComponent(url),{headers:{'Accept':'application/json'}}).then(function(r){
-      if(!r.ok) throw new Error('proxy '+r.status);
-      return r.json();
-    }).catch(function(){return tryNext();});
-  }
-  return tryNext();
-}
-// ── Price Refresh (client-side via Yahoo Finance) ──
+// ── Yahoo Finance via Supabase RPC (server-side proxy) ──
 function yfQuote(symbol){
-  var url='https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(symbol)+'?range=1d&interval=1d';
-  return corsGet(url).then(function(d){
-    var meta=d&&d.chart&&d.chart.result&&d.chart.result[0]&&d.chart.result[0].meta;
-    if(meta&&meta.regularMarketPrice>0) return meta.regularMarketPrice;
+  return sb.rpc('yahoo_quote',{symbol:symbol}).then(function(res){
+    if(res.data&&res.data.price>0) return res.data.price;
     return null;
   }).catch(function(){return null;});
 }
@@ -73,37 +53,61 @@ function refreshPrices(silent){
   var topBtn=$('refreshBtn');
   if(topBtn){topBtn.classList.add('spinning');topBtn.style.pointerEvents='none';}
   var stocks=data.invest.items.filter(function(it){return it.sk&&it.sk.ticker&&it.stat;});
-  var promises=stocks.map(function(it){
+  // Build symbol list for batch query
+  var symbols=['TWD=X'];
+  var symMap={};// yfSymbol -> [item, ...]
+  stocks.forEach(function(it){
     var sym=it.sk.ticker;
     if(!it.sk.isUs&&!sym.endsWith('.TW')&&!sym.endsWith('.TWO')) sym=sym+'.TW';
-    return yfQuote(sym).then(function(price){
-      if(!price&&!it.sk.isUs) return yfQuote(it.sk.ticker+'.TWO');
-      return price;
-    }).then(function(price){return {it:it,price:price};});
+    symbols.push(sym);
+    if(!symMap[sym])symMap[sym]=[];
+    symMap[sym].push(it);
   });
-  // also fetch FX rate
-  promises.push(yfQuote('TWD=X').then(function(p){return {fx:true,price:p};}));
-  return Promise.all(promises).then(function(results){
+  return sb.rpc('yahoo_batch_quotes',{symbols:symbols}).then(function(res){
+    var prices=res.data||{};
+    if(prices['TWD=X']) st.fxRate=prices['TWD=X'];
     var updated=[];
-    results.forEach(function(r){
-      if(r.fx&&r.price){st.fxRate=r.price;return;}
-      if(!r.it||!r.price)return;
-      var it=r.it,oldPrice=it.sk.curPrice;
-      it.sk.curPrice=r.price;
-      var newBal=it.sk.isUs?Math.round(it.sk.shares*r.price*st.fxRate):Math.round(it.sk.shares*r.price);
-      it.bal=newBal;
-      updated.push(it);
-      // update Supabase in background
-      sb.from('accounts').update({stock_data:it.sk,balance:newBal}).eq('id',it.id).then(function(){});
+    Object.keys(prices).forEach(function(sym){
+      if(sym==='TWD=X')return;
+      var price=prices[sym];
+      (symMap[sym]||[]).forEach(function(it){
+        it.sk.curPrice=price;
+        var newBal=it.sk.isUs?Math.round(it.sk.shares*price*st.fxRate):Math.round(it.sk.shares*price);
+        it.bal=newBal;
+        updated.push(it);
+        sb.from('accounts').update({stock_data:it.sk,balance:newBal}).eq('id',it.id).then(function(){});
+      });
     });
-    st.priceTs=new Date();
-    if(updated.length){renderOverview();renderStocks();updateHero();if(typeof renderLeverage==='function')renderLeverage();}
-    if(btn){btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 16 16" width="14" height="14"><path d="M13.65 2.35A7 7 0 1 0 15 8h-2a5 5 0 1 1-1.46-3.54L9 7h6V1z" fill="currentColor"/></svg> 更新報價';}
-    if(topBtn){topBtn.classList.remove('spinning');topBtn.style.pointerEvents='';}
-    var tsEl=$('sk-price-ts');
-    if(tsEl&&st.priceTs) tsEl.textContent='更新於 '+st.priceTs.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});
-    if(!silent&&updated.length) toast('✓ 已更新 '+updated.length+' 檔報價');
-    if(!silent&&!updated.length) toast('所有報價已是最新');
+    // Try .TWO for TW stocks that failed
+    var twMissing=stocks.filter(function(it){
+      if(it.sk.isUs)return false;
+      var sym=it.sk.ticker+'.TW';
+      return !prices[sym];
+    });
+    var twoPromise=twMissing.length?sb.rpc('yahoo_batch_quotes',{symbols:twMissing.map(function(it){return it.sk.ticker+'.TWO';})}).then(function(r2){
+      var p2=r2.data||{};
+      Object.keys(p2).forEach(function(sym){
+        var ticker=sym.replace('.TWO','');
+        var it=stocks.find(function(s){return s.sk.ticker===ticker;});
+        if(it){
+          it.sk.curPrice=p2[sym];
+          var newBal=Math.round(it.sk.shares*p2[sym]);
+          it.bal=newBal;
+          updated.push(it);
+          sb.from('accounts').update({stock_data:it.sk,balance:newBal}).eq('id',it.id).then(function(){});
+        }
+      });
+    }):Promise.resolve();
+    return twoPromise.then(function(){
+      st.priceTs=new Date();
+      if(updated.length){renderOverview();renderStocks();updateHero();if(typeof renderLeverage==='function')renderLeverage();}
+      if(btn){btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 16 16" width="14" height="14"><path d="M13.65 2.35A7 7 0 1 0 15 8h-2a5 5 0 1 1-1.46-3.54L9 7h6V1z" fill="currentColor"/></svg> 更新報價';}
+      if(topBtn){topBtn.classList.remove('spinning');topBtn.style.pointerEvents='';}
+      var tsEl=$('sk-price-ts');
+      if(tsEl&&st.priceTs) tsEl.textContent='更新於 '+st.priceTs.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});
+      if(!silent&&updated.length) toast('✓ 已更新 '+updated.length+' 檔報價');
+      if(!silent&&!updated.length) toast('所有報價已是最新');
+    });
   }).catch(function(e){
     if(btn){btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 16 16" width="14" height="14"><path d="M13.65 2.35A7 7 0 1 0 15 8h-2a5 5 0 1 1-1.46-3.54L9 7h6V1z" fill="currentColor"/></svg> 更新報價';}
     if(topBtn){topBtn.classList.remove('spinning');topBtn.style.pointerEvents='';}
@@ -121,8 +125,9 @@ function onStockSearch(q,prefix){
   box.innerHTML='<div class="sk-sr-loading">搜尋中…</div>';
   box.classList.add('on');
   _skSearchTimer=setTimeout(function(){
-    var searchUrl='https://query2.finance.yahoo.com/v1/finance/search?q='+encodeURIComponent(q)+'&quotesCount=8&newsCount=0&listsCount=0&enableFuzzyQuery=true';
-    corsGet(searchUrl).then(function(data_resp){
+    sb.rpc('yahoo_search',{q:q}).then(function(rpcRes){
+      var data_resp=rpcRes.data||{};
+      if(data_resp.error){throw new Error(data_resp.error);}
       var us_ex=['NGM','NMS','NYQ','PCX','BTS','NYS','NAS','ASE'];
       var tw_ex=['TAI','TWO','TPE'];
       var res=[];
