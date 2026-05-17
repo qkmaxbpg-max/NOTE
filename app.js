@@ -189,6 +189,9 @@ function selectStock(idx,prefix){
       +'<div><div class="sk-sel-price">'+(isTw?'NT$':'US$')+' '+price.toLocaleString()+'</div>'
       +'<div class="sk-sel-price-lbl">即時報價</div></div>';
 
+    // Store live price on card element for calcAddFee
+    card._livePrice=price;
+
     // Fill hidden fields + show clear X
     if(prefix==='s'){
       $('s-tk').value=r.symbol;$('s-mkt').value=isTw?'台股':'美股';
@@ -1161,8 +1164,10 @@ function addGoS3(type){
   st.addL3=type;$('add-s3-ttl').textContent=type;
   $('add-name').value='';$('add-bal').value='';$('add-desc').value='';
   $('add-stat-tog').classList.add('on');
-  $('add-stock-f').style.display=(type==='股票')?'block':'none';
-  if(type==='股票') clearStockSelection('add');
+  var isStock=(type==='股票');
+  $('add-stock-f').style.display=isStock?'block':'none';
+  $('add-bal-wrap').style.display=isStock?'none':'';// hide balance for stocks
+  if(isStock) clearStockSelection('add');
   $('add-debt-f').style.display=(DEBT_TYPES.indexOf(type)>=0)?'block':'none';
   $('add-pledge-f').style.display=(type==='股票質押')?'block':'none';
   $('add-fee-box').style.display='none';$('add-loan-box').style.display='none';
@@ -1193,11 +1198,20 @@ function addShowStep(n){
 }
 function calcAddFee(){
   var sh=parseFloat($('add-shares').value)||0,pr=parseFloat($('add-price').value)||0,paid=parseFloat($('add-paid').value)||0;
-  if(!sh||!pr||!paid){$('add-fee-box').style.display='none';return;}
+  if(!sh||!paid){$('add-fee-box').style.display='none';return;}
   var sub=sh*pr,fee=paid-sub;
-  $('add-sub').textContent='NT$ '+Math.round(sub).toLocaleString();
-  $('add-fee').textContent='NT$ '+Math.round(fee).toLocaleString();
-  $('add-total').textContent='NT$ '+paid.toLocaleString();
+  // get live quote price for market value
+  var curPrice=pr;
+  var cpEl=$('add-selected-card');
+  if(cpEl&&cpEl._livePrice) curPrice=cpEl._livePrice;
+  var isUs=$('add-isUs')&&$('add-isUs').value==='1';
+  var ccyLabel=isUs?'US$':'NT$';
+  var mktVal=sh*curPrice;
+  $('add-sub').textContent=ccyLabel+' '+Math.round(sub).toLocaleString();
+  $('add-sub-hint').textContent=sh.toLocaleString()+' 股 × '+pr;
+  $('add-fee').textContent=ccyLabel+' '+Math.round(Math.abs(fee)).toLocaleString();
+  $('add-mkt-val').textContent=ccyLabel+' '+Math.round(mktVal).toLocaleString();
+  $('add-mkt-hint').textContent=sh.toLocaleString()+' 股 × '+curPrice;
   $('add-fee-box').style.display='block';
 }
 function calcPMT(P,rateAnnual,n){
@@ -1248,8 +1262,17 @@ function submitAddAcct(){
     var sh=parseFloat($('add-shares').value)||0,pr=parseFloat($('add-price').value)||0,paid=parseFloat($('add-paid').value)||0;
     var isUs=$('add-isUs')&&$('add-isUs').value==='1';
     var addLev=parseInt($('add-leverage').value)||1;
-    payload.stock_data={ticker:$('add-ticker').value.trim().toUpperCase()||name,shares:sh,avgPrice:pr,paid:paid,curPrice:pr,fee:paid-(sh*pr),isUs:isUs,leverage:addLev};
-    payload.balance=Math.round(paid);
+    var curPrice=pr;// default to avgPrice
+    var cpEl=$('add-selected-card');
+    if(cpEl&&cpEl._livePrice) curPrice=cpEl._livePrice;
+    var fee=paid-(sh*pr);
+    payload.stock_data={ticker:$('add-ticker').value.trim().toUpperCase()||name,shares:sh,avgPrice:pr,paid:paid,curPrice:curPrice,fee:fee,isUs:isUs,leverage:addLev};
+    // balance = current market value (shares × live price)
+    if(isUs){
+      payload.balance=Math.round(sh*curPrice*st.fxRate);
+    } else {
+      payload.balance=Math.round(sh*curPrice);
+    }
   }
 
   if(DEBT_TYPES.indexOf(type)>=0){
@@ -1301,8 +1324,19 @@ function openEditAcct(key,idx){
   $('edit-bal').value=Math.abs(it.bal);
   $('edit-desc').value=it.desc||'';
   $('edit-stat').classList.toggle('on',it.stat);
-  // stock leverage section
+  // stock fields
   var isStock=!!it.sk;
+  $('edit-bal-wrap').style.display=isStock?'none':'';
+  $('edit-stock-f').style.display=isStock?'block':'none';
+  if(isStock){
+    $('edit-shares').value=it.sk.shares||'';
+    $('edit-price').value=it.sk.avgPrice||'';
+    $('edit-paid').value=it.sk.paid||'';
+    calcEditStockFee();
+  } else {
+    $('edit-fee-box').style.display='none';
+  }
+  // stock leverage section
   $('edit-lev-section').style.display=isStock?'block':'none';
   if(isStock) $('edit-leverage').value=String(it.sk.leverage||1);
   // loan section
@@ -1376,6 +1410,22 @@ function calcEditLoan(){
   }
   $('edit-loan-preview').style.display='block';
 }
+function calcEditStockFee(){
+  var sh=parseFloat($('edit-shares').value)||0,pr=parseFloat($('edit-price').value)||0,paid=parseFloat($('edit-paid').value)||0;
+  if(!sh||!paid){$('edit-fee-box').style.display='none';return;}
+  var sub=sh*pr,fee=paid-sub;
+  var it=data[st.editKey].items[st.editIdx];
+  var isUs=it.sk&&it.sk.isUs;
+  var curPrice=it.sk&&it.sk.curPrice?it.sk.curPrice:pr;
+  var ccyLabel=isUs?'US$':'NT$';
+  var mktVal=sh*curPrice;
+  $('edit-sub').textContent=ccyLabel+' '+Math.round(sub).toLocaleString();
+  $('edit-sub-hint').textContent=sh.toLocaleString()+' 股 × '+pr;
+  $('edit-fee').textContent=ccyLabel+' '+Math.round(Math.abs(fee)).toLocaleString();
+  $('edit-mkt-val').textContent=ccyLabel+' '+Math.round(mktVal).toLocaleString();
+  $('edit-mkt-hint').textContent=sh.toLocaleString()+' 股 × '+curPrice;
+  $('edit-fee-box').style.display='block';
+}
 function submitEdit(){
   var key=st.editKey,idx=st.editIdx,it=data[key].items[idx];
   var sign=(key==='debt')?-1:1;
@@ -1384,10 +1434,23 @@ function submitEdit(){
   var newDesc=$('edit-desc').value.trim();
   var newStat=$('edit-stat').classList.contains('on');
   var payload={name:newName,balance:newBal,description:newDesc,stat:newStat};
-  // save stock leverage
+  // save stock data
   if(it.sk){
     var newLev=parseInt($('edit-leverage').value)||1;
-    payload.stock_data=Object.assign({},it.sk,{leverage:newLev});
+    var eSh=parseFloat($('edit-shares').value)||0;
+    var ePr=parseFloat($('edit-price').value)||0;
+    var ePaid=parseFloat($('edit-paid').value)||0;
+    var eFee=ePaid-(eSh*ePr);
+    var eCurPrice=it.sk.curPrice||ePr;
+    var eIsUs=it.sk.isUs;
+    payload.stock_data=Object.assign({},it.sk,{leverage:newLev,shares:eSh,avgPrice:ePr,paid:ePaid,fee:eFee});
+    // auto-calculate balance as market value
+    if(eIsUs){
+      newBal=Math.round(eSh*eCurPrice*st.fxRate);
+    } else {
+      newBal=Math.round(eSh*eCurPrice);
+    }
+    payload.balance=newBal;
   }
   // save loan_data if unlocked
   if(it.loan&&!editLocked){
@@ -1588,11 +1651,19 @@ function toggleSk(rId,eId){
 function calcSkFee(){
   var sh=parseFloat($('s-sh').value)||0,pr=parseFloat($('s-cp').value)||0,paid=parseFloat($('s-paid').value)||0;
   var box=$('sk-fee-box');
-  if(!sh||!pr||!paid){box.style.display='none';return;}
+  if(!sh||!paid){box.style.display='none';return;}
   var sub=sh*pr,fee=paid-sub;
-  $('sk-sub').textContent='NT$ '+Math.round(sub).toLocaleString();
-  $('sk-fee').textContent='NT$ '+Math.round(fee).toLocaleString();
-  $('sk-total-cost').textContent='NT$ '+paid.toLocaleString();
+  var curPrice=pr;
+  var cpEl=$('s-selected-card');
+  if(cpEl&&cpEl._livePrice) curPrice=cpEl._livePrice;
+  var isUs=$('s-mkt').value==='美股';
+  var ccyLabel=isUs?'US$':'NT$';
+  var mktVal=sh*curPrice;
+  $('sk-sub').textContent=ccyLabel+' '+Math.round(sub).toLocaleString();
+  $('sk-sub-hint').textContent=sh.toLocaleString()+' 股 × '+pr;
+  $('sk-fee').textContent=ccyLabel+' '+Math.round(Math.abs(fee)).toLocaleString();
+  $('sk-mkt-val').textContent=ccyLabel+' '+Math.round(mktVal).toLocaleString();
+  $('sk-mkt-hint').textContent=sh.toLocaleString()+' 股 × '+curPrice;
   box.style.display='block';
 }
 function submitStock(){
@@ -1601,10 +1672,14 @@ function submitStock(){
   var isUs=$('s-mkt').value==='美股',sh=parseFloat($('s-sh').value)||0;
   var pr=parseFloat($('s-cp').value)||0,paid=parseFloat($('s-paid').value)||0;
   var nm=$('s-nm').value.trim()||tk,dot=DOTS[data.invest.items.length%DOTS.length];
+  var curPrice=pr;
+  var cpEl=$('s-selected-card');
+  if(cpEl&&cpEl._livePrice) curPrice=cpEl._livePrice;
+  var mktVal=isUs?Math.round(sh*curPrice*st.fxRate):Math.round(sh*curPrice);
 
   api('POST','/api/accounts',{
-    category:'invest',name:tk,type:'股票',balance:Math.round(paid),description:nm,dot_color:dot,stat:true,
-    stock_data:{ticker:tk,shares:sh,avgPrice:pr,paid:paid,curPrice:pr,fee:paid-(sh*pr),isUs:isUs,leverage:parseInt($('s-leverage').value)||1}
+    category:'invest',name:tk,type:'股票',balance:mktVal,description:nm,dot_color:dot,stat:true,
+    stock_data:{ticker:tk,shares:sh,avgPrice:pr,paid:paid,curPrice:curPrice,fee:paid-(sh*pr),isUs:isUs,leverage:parseInt($('s-leverage').value)||1}
   }).then(function(){
     $('m-stock').classList.remove('on');
     clearStockSelection('s');

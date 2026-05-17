@@ -15,7 +15,7 @@
 <!-- PWA: common -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=6">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -354,7 +354,7 @@
       <div class="step-back" onclick="addShowStep(2)"><svg viewBox="0 0 16 16"><path d="M10 4L6 8l4 4"/></svg>返回</div>
       <div class="mttl" id="add-s3-ttl">帳戶設定</div>
       <div class="field"><label>帳戶名稱</label><input type="text" id="add-name" placeholder="自訂名稱"></div>
-      <div class="field"><label>餘額（NT$）</label><input type="number" id="add-bal" placeholder="0" inputmode="decimal" oninput="calcAddLoan()"></div>
+      <div class="field" id="add-bal-wrap"><label>餘額（NT$）</label><input type="number" id="add-bal" placeholder="0" inputmode="decimal" oninput="calcAddLoan()"></div>
       <div id="add-stock-f" style="display:none">
         <div class="field" style="position:relative">
           <label>搜尋股票</label>
@@ -383,9 +383,9 @@
             </select>
           </div>
           <div class="info-box" id="add-fee-box" style="display:none">
-            <div class="info-row"><span class="info-lbl">成本小計</span><span class="info-val" id="add-sub">—</span></div>
+            <div class="info-row"><span class="info-lbl">股票成本</span><span class="info-val" id="add-sub">—</span><span class="info-hint" id="add-sub-hint"></span></div>
             <div class="info-row"><span class="info-lbl">手續費</span><span class="info-val" id="add-fee">—</span></div>
-            <div class="info-row"><span class="info-lbl">實際總成本</span><span class="info-val" id="add-total">—</span></div>
+            <div class="info-row" style="border-top:1px solid var(--bg4);padding-top:8px;margin-top:4px"><span class="info-lbl" style="font-weight:600">帳上市值</span><span class="info-val" id="add-mkt-val">—</span><span class="info-hint" id="add-mkt-hint"></span></div>
           </div>
         </div>
       </div>
@@ -431,7 +431,19 @@
     <div class="mpull"></div>
     <div class="mttl" id="edit-ttl">編輯帳戶</div>
     <div class="field"><label>帳戶名稱</label><input type="text" id="edit-name"></div>
-    <div class="field"><label>餘額（NT$）</label><input type="number" id="edit-bal" oninput="calcEditLoan()"></div>
+    <div class="field" id="edit-bal-wrap"><label>餘額（NT$）</label><input type="number" id="edit-bal" oninput="calcEditLoan()"></div>
+    <div id="edit-stock-f" style="display:none">
+      <div class="f2">
+        <div class="field"><label>持有股數</label><input type="number" id="edit-shares" placeholder="0" oninput="calcEditStockFee()"></div>
+        <div class="field"><label>買入均價</label><input type="number" id="edit-price" placeholder="0.00" step="0.01" oninput="calcEditStockFee()"></div>
+      </div>
+      <div class="field"><label>實際付出總金額</label><input type="number" id="edit-paid" placeholder="0" oninput="calcEditStockFee()"></div>
+      <div class="info-box" id="edit-fee-box" style="display:none">
+        <div class="info-row"><span class="info-lbl">股票成本</span><span class="info-val" id="edit-sub">—</span><span class="info-hint" id="edit-sub-hint"></span></div>
+        <div class="info-row"><span class="info-lbl">手續費</span><span class="info-val" id="edit-fee">—</span></div>
+        <div class="info-row" style="border-top:1px solid var(--bg4);padding-top:8px;margin-top:4px"><span class="info-lbl" style="font-weight:600">帳上市值</span><span class="info-val" id="edit-mkt-val">—</span><span class="info-hint" id="edit-mkt-hint"></span></div>
+      </div>
+    </div>
     <div class="field"><label>說明（選填）</label><input type="text" id="edit-desc"></div>
     <div class="tog-row"><span class="tog-lbl">納入統計與淨值</span><button class="tog on" id="edit-stat" onclick="this.classList.toggle('on')"></button></div>
     <!-- stock leverage -->
@@ -562,9 +574,9 @@
         </select>
       </div>
       <div class="info-box" id="sk-fee-box" style="display:none">
-        <div class="info-row"><span class="info-lbl">成本小計（股數×均價）</span><span class="info-val" id="sk-sub">—</span></div>
+        <div class="info-row"><span class="info-lbl">股票成本</span><span class="info-val" id="sk-sub">—</span><span class="info-hint" id="sk-sub-hint"></span></div>
         <div class="info-row"><span class="info-lbl">手續費</span><span class="info-val" id="sk-fee">—</span></div>
-        <div class="info-row"><span class="info-lbl">實際總成本</span><span class="info-val" id="sk-total-cost">—</span></div>
+        <div class="info-row" style="border-top:1px solid var(--bg4);padding-top:8px;margin-top:4px"><span class="info-lbl" style="font-weight:600">帳上市值</span><span class="info-val" id="sk-mkt-val">—</span><span class="info-hint" id="sk-mkt-hint"></span></div>
       </div>
       <div class="field"><label>顯示名稱（選填）</label><input type="text" id="s-nm" placeholder="台灣50 ETF"></div>
       <button class="subbtn" onclick="submitStock()">新增持倉</button>
@@ -695,6 +707,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=5"></script>
+<script src="app.js?v=6"></script>
 </body>
 </html>
