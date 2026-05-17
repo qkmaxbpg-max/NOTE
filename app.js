@@ -40,11 +40,28 @@ function fmtAmt(n){return(n<0?'－':'')+fmtN(n);}
 function cvt(n){return st.ccy==='USD'?Math.round(n/st.fxRate):Math.round(n);}
 function ccySym(){return st.ccy==='USD'?'US$':'NT$';}
 
+// ── CORS Proxy with fallback ──
+var CORS_PROXIES=[
+  'https://corsproxy.io/?url=',
+  'https://api.allorigins.win/raw?url=',
+  'https://api.codetabs.com/v1/proxy?quest='
+];
+function corsGet(url){
+  var idx=0;
+  function tryNext(){
+    if(idx>=CORS_PROXIES.length) return Promise.reject(new Error('all proxies failed'));
+    var proxy=CORS_PROXIES[idx++];
+    return fetch(proxy+encodeURIComponent(url),{headers:{'Accept':'application/json'}}).then(function(r){
+      if(!r.ok) throw new Error('proxy '+r.status);
+      return r.json();
+    }).catch(function(){return tryNext();});
+  }
+  return tryNext();
+}
 // ── Price Refresh (client-side via Yahoo Finance) ──
-var CORS_PROXY='https://api.allorigins.win/raw?url=';
 function yfQuote(symbol){
   var url='https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(symbol)+'?range=1d&interval=1d';
-  return fetch(CORS_PROXY+encodeURIComponent(url)).then(function(r){return r.json();}).then(function(d){
+  return corsGet(url).then(function(d){
     var meta=d&&d.chart&&d.chart.result&&d.chart.result[0]&&d.chart.result[0].meta;
     if(meta&&meta.regularMarketPrice>0) return meta.regularMarketPrice;
     return null;
@@ -105,7 +122,7 @@ function onStockSearch(q,prefix){
   box.classList.add('on');
   _skSearchTimer=setTimeout(function(){
     var searchUrl='https://query2.finance.yahoo.com/v1/finance/search?q='+encodeURIComponent(q)+'&quotesCount=8&newsCount=0&listsCount=0&enableFuzzyQuery=true';
-    fetch(CORS_PROXY+encodeURIComponent(searchUrl)).then(function(r){return r.json();}).then(function(data_resp){
+    corsGet(searchUrl).then(function(data_resp){
       var us_ex=['NGM','NMS','NYQ','PCX','BTS','NYS','NAS','ASE'];
       var tw_ex=['TAI','TWO','TPE'];
       var res=[];
