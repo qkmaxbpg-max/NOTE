@@ -6,6 +6,7 @@ var sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON);
 var MONTHS=['01','02','03','04','05','06','07','08','09','10','11','12'];
 var DOTS=['#1db954','#3d8ef8','#f5a623','#a78bfa','#2dd4bf','#f25c5c','#34d399','#fb923c'];
 var DEBT_TYPES=['信用卡','信用貸款','股票質押','房貸','車貸','其他貸款','應付款','其他負債'];
+var LOAN_TYPES=['信用貸款','股票質押','房貸','車貸','其他貸款'];
 var L3_TYPES={
   liquid:['現金','電子錢包','其他'],
   invest:['股票','加密貨幣','貴金屬','其他'],
@@ -66,6 +67,15 @@ function refreshPrices(silent){
   return sb.rpc('yahoo_batch_quotes',{symbols:symbols}).then(function(res){
     var prices=res.data||{};
     if(prices['TWD=X']) st.fxRate=prices['TWD=X'];
+    // update non-stock USD account balances with new FX rate
+    allAccounts.forEach(function(it){
+      if(it.ccy==='USD'&&!(it.sk&&it.sk.ticker)&&it.sk&&it.sk.originalBalance){
+        var newBal=Math.round(it.sk.originalBalance*st.fxRate);
+        if(it.category==='debt') newBal=-Math.abs(newBal);
+        it.bal=newBal;
+        sb.from('accounts').update({balance:newBal}).eq('id',it.id).then(function(){});
+      }
+    });
     var updated=[];
     Object.keys(prices).forEach(function(sym){
       if(sym==='TWD=X')return;
@@ -714,7 +724,9 @@ function loadAccounts(){
     ['liquid','invest','fixed','recv','debt'].forEach(function(k){data[k].items=[];});
     (res.data||[]).forEach(function(r){
       var k=r.category;
-      var it={id:r.id,name:r.name,type:r.type,bal:r.balance,desc:r.description,dot:r.dot_color,stat:!!r.stat,group:r.group_name,category:k};
+      var it={id:r.id,name:r.name,type:r.type,bal:r.balance,desc:r.description,dot:r.dot_color,stat:!!r.stat,group:r.group_name,category:k,ccy:'TWD'};
+      if(r.stock_data&&r.stock_data.currency) it.ccy=r.stock_data.currency;
+      else if(r.stock_data&&r.stock_data.isUs) it.ccy='USD';
       if(r.stock_data) it.sk=r.stock_data;
       if(r.loan_data) it.loan=r.loan_data;
       allAccounts.push(it);
@@ -1167,11 +1179,13 @@ function addGoS3(type){
   var isStock=(type==='股票');
   $('add-stock-f').style.display=isStock?'block':'none';
   $('add-bal-wrap').style.display=isStock?'none':'';// hide balance for stocks
+  $('add-ccy-wrap').style.display=isStock?'none':'';
+  $('add-ccy').value='TWD';onAddCcyChange();
   if(isStock) clearStockSelection('add');
-  $('add-debt-f').style.display=(DEBT_TYPES.indexOf(type)>=0)?'block':'none';
+  $('add-debt-f').style.display=(LOAN_TYPES.indexOf(type)>=0)?'block':'none';
   $('add-pledge-f').style.display=(type==='股票質押')?'block':'none';
   $('add-fee-box').style.display='none';$('add-loan-box').style.display='none';
-  if(DEBT_TYPES.indexOf(type)>=0){
+  if(LOAN_TYPES.indexOf(type)>=0){
     $('add-repay-type').value='本息平均攤還';
     $('add-rate').value='';$('add-months').value='';$('add-loan-start').value='';
     $('add-pay-day').value='';$('add-pmt-override').value='';
@@ -1179,6 +1193,18 @@ function addGoS3(type){
   }
   if(type==='股票質押') renderPledgeStocksSelector('add',[]);
   addShowStep(3);
+}
+function onAddCcyChange(){
+  var ccy=$('add-ccy').value;
+  var label=ccy==='USD'?'餘額（US$）':'餘額（NT$）';
+  var balLabel=$('add-bal-wrap');
+  if(balLabel){var lbl=balLabel.querySelector('label');if(lbl)lbl.textContent=label;}
+}
+function onEditCcyChange(){
+  var ccy=$('edit-ccy').value;
+  var label=ccy==='USD'?'餘額（US$）':'餘額（NT$）';
+  var balLabel=$('edit-bal-wrap');
+  if(balLabel){var lbl=balLabel.querySelector('label');if(lbl)lbl.textContent=label;}
 }
 function onRepayTypeChange(){
   var type=$('add-repay-type').value;
@@ -1257,6 +1283,11 @@ function submitAddAcct(){
   if(!name){toast('請輸入帳戶名稱');return;}
   var dot=DOTS[data[key].items.length%DOTS.length],sign=(key==='debt')?-1:1;
   var payload={category:key,name:name,type:type,balance:sign*Math.abs(bal),description:desc,dot_color:dot,stat:stat};
+  var addCcy=$('add-ccy').value;
+  if(addCcy==='USD'&&type!=='股票'){
+    payload.balance=sign*Math.round(Math.abs(bal)*st.fxRate);
+    payload.stock_data={currency:'USD',originalBalance:bal};
+  }
 
   if(type==='股票'){
     var sh=parseFloat($('add-shares').value)||0,pr=parseFloat($('add-price').value)||0,paid=parseFloat($('add-paid').value)||0;
@@ -1275,7 +1306,7 @@ function submitAddAcct(){
     }
   }
 
-  if(DEBT_TYPES.indexOf(type)>=0){
+  if(LOAN_TYPES.indexOf(type)>=0){
     var rate=parseFloat($('add-rate').value)||0;
     var months=parseInt($('add-months').value)||0;
     var payDay=parseInt($('add-pay-day').value)||1;
@@ -1322,6 +1353,17 @@ function openEditAcct(key,idx){
   $('edit-ttl').textContent='編輯 · '+it.name;
   $('edit-name').value=it.name;
   $('edit-bal').value=Math.abs(it.bal);
+  // currency handling
+  var editIsStock=!!it.sk&&it.type==='股票';
+  $('edit-ccy-wrap').style.display=editIsStock?'none':'';
+  if(!editIsStock){
+    var acctCcy=it.ccy||'TWD';
+    $('edit-ccy').value=acctCcy;
+    if(acctCcy==='USD'&&it.sk&&it.sk.originalBalance){
+      $('edit-bal').value=it.sk.originalBalance;
+    }
+    onEditCcyChange();
+  }
   $('edit-desc').value=it.desc||'';
   $('edit-stat').classList.toggle('on',it.stat);
   // stock fields
@@ -1434,6 +1476,19 @@ function submitEdit(){
   var newDesc=$('edit-desc').value.trim();
   var newStat=$('edit-stat').classList.contains('on');
   var payload={name:newName,balance:newBal,description:newDesc,stat:newStat};
+  // handle currency for non-stock accounts
+  if(!it.sk){
+    var editCcy=$('edit-ccy').value;
+    if(editCcy==='USD'){
+      var rawBal=Math.abs(parseFloat($('edit-bal').value)||0);
+      newBal=sign*Math.round(rawBal*st.fxRate);
+      payload.balance=newBal;
+      payload.stock_data={currency:'USD',originalBalance:rawBal};
+    } else {
+      // if switching from USD to TWD, clear currency data
+      if(it.ccy==='USD') payload.stock_data=null;
+    }
+  }
   // save stock data
   if(it.sk){
     var newLev=parseInt($('edit-leverage').value)||1;
@@ -1927,6 +1982,43 @@ function openModal(type){
   var el=$(id);
   if(el)el.addEventListener('click',function(e){if(e.target===el)el.classList.remove('on');});
 });
+// swipe-to-dismiss on modals
+(function(){
+  document.querySelectorAll('.modal').forEach(function(modal){
+    var startY=0,currentY=0,isDragging=false;
+    var pull=modal.querySelector('.mpull');
+    if(!pull)return;
+    pull.addEventListener('touchstart',function(e){
+      if(modal.scrollTop>0)return;
+      startY=e.touches[0].clientY;currentY=startY;isDragging=true;
+      modal.style.transition='none';
+    },{passive:true});
+    modal.addEventListener('touchmove',function(e){
+      if(!isDragging)return;
+      currentY=e.touches[0].clientY;
+      var dy=currentY-startY;
+      if(dy<0)dy=0;
+      modal.style.transform='translateY('+dy+'px)';
+    },{passive:true});
+    modal.addEventListener('touchend',function(){
+      if(!isDragging)return;
+      isDragging=false;
+      var dy=currentY-startY;
+      modal.style.transition='transform .25s ease';
+      if(dy>80){
+        modal.style.transform='translateY(100%)';
+        setTimeout(function(){
+          var backdrop=modal.parentElement;
+          if(backdrop&&backdrop.classList.contains('on'))backdrop.classList.remove('on');
+          modal.style.transform='';modal.style.transition='';
+        },260);
+      } else {
+        modal.style.transform='';
+        setTimeout(function(){modal.style.transition='';},260);
+      }
+    },{passive:true});
+  });
+})();
 function setTxType(t,btn){
   if(t==='tf'){
     $('m-tx').classList.remove('on');

@@ -15,7 +15,7 @@
 <!-- PWA: common -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=6">
+<link rel="stylesheet" href="style.css?v=7">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -355,6 +355,12 @@
       <div class="mttl" id="add-s3-ttl">帳戶設定</div>
       <div class="field"><label>帳戶名稱</label><input type="text" id="add-name" placeholder="自訂名稱"></div>
       <div class="field" id="add-bal-wrap"><label>餘額（NT$）</label><input type="number" id="add-bal" placeholder="0" inputmode="decimal" oninput="calcAddLoan()"></div>
+      <div class="field" id="add-ccy-wrap"><label>幣別</label>
+        <select id="add-ccy" onchange="onAddCcyChange()">
+          <option value="TWD">NT$ 台幣</option>
+          <option value="USD">US$ 美元</option>
+        </select>
+      </div>
       <div id="add-stock-f" style="display:none">
         <div class="field" style="position:relative">
           <label>搜尋股票</label>
@@ -432,6 +438,12 @@
     <div class="mttl" id="edit-ttl">編輯帳戶</div>
     <div class="field"><label>帳戶名稱</label><input type="text" id="edit-name"></div>
     <div class="field" id="edit-bal-wrap"><label>餘額（NT$）</label><input type="number" id="edit-bal" oninput="calcEditLoan()"></div>
+    <div class="field" id="edit-ccy-wrap"><label>幣別</label>
+      <select id="edit-ccy" onchange="onEditCcyChange()">
+        <option value="TWD">NT$ 台幣</option>
+        <option value="USD">US$ 美元</option>
+      </select>
+    </div>
     <div id="edit-stock-f" style="display:none">
       <div class="f2">
         <div class="field"><label>持有股數</label><input type="number" id="edit-shares" placeholder="0" oninput="calcEditStockFee()"></div>
@@ -707,6 +719,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=6"></script>
+<script src="app.js?v=7"></script>
 </body>
 </html>
