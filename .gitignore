@@ -1,0 +1,6 @@
+fintrack.db
+__pycache__/
+gen_avatars.py
+generate-icons.html
+.claude/
+*.pyc

@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>fin.track</title>
+<!-- PWA: Android manifest -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0c0c0e">
+<!-- PWA: iOS (Apple) -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="記帳本">
+<link rel="apple-touch-icon" sizes="180x180" href="icon-180.png">
+<!-- PWA: common -->
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=4">
+</head>
+<body>
+<div class="sidenav-back" id="sidenavBack" onclick="toggleSideNav()"></div>
+<div class="sidenav" id="sidenav">
+  <div class="sidenav-head">fin<span>.</span>track</div>
+  <!-- user profile -->
+  <div class="sidenav-user">
+    <span class="sidenav-user-avatar" id="cur-user-avatar">😊</span>
+    <span class="sidenav-user-name" id="cur-user-name">我</span>
+  </div>
+  <div class="sidenav-list">
+    <div class="sidenav-item active" onclick="navTo('overview')">
+      <svg viewBox="0 0 20 20" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><rect x="3" y="3" width="6" height="7" rx="1"/><rect x="11" y="3" width="6" height="4" rx="1"/><rect x="3" y="12" width="6" height="5" rx="1"/><rect x="11" y="9" width="6" height="8" rx="1"/></svg>
+      <span>記帳總覽</span>
+    </div>
+    <div class="sidenav-item" onclick="navTo('leverage')">
+      <svg viewBox="0 0 20 20" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><polyline points="3 17 8 10 12 13 17 5"/><line x1="14" y1="5" x2="17" y2="5"/><line x1="17" y1="5" x2="17" y2="8"/></svg>
+      <span>槓桿資金分析</span>
+    </div>
+    <div class="sidenav-item" onclick="navTo('invest')">
+      <svg viewBox="0 0 20 20" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/></svg>
+      <span>資金投資分析工具</span>
+    </div>
+  </div>
+  <!-- user switcher -->
+  <div class="sidenav-section-lbl">使用者</div>
+  <div id="user-list"></div>
+  <div class="sidenav-item sidenav-add-user" onclick="openAddUser()">
+    <svg viewBox="0 0 20 20" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><circle cx="10" cy="7" r="3"/><path d="M3 17c0-3.3 3.1-6 7-6s7 2.7 7 6"/><line x1="16" y1="3" x2="16" y2="9"/><line x1="13" y1="6" x2="19" y2="6"/></svg>
+    <span>新增使用者</span>
+  </div>
+</div>
+<div class="shell">
+  <div class="topbar">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="ico-btn" id="menuBtn" onclick="toggleSideNav()">
+        <svg viewBox="0 0 20 20" style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round"><line x1="3" y1="5" x2="17" y2="5"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="15" x2="17" y2="15"/></svg>
+      </div>
+      <div class="logo">fin<span>.</span>track</div>
+    </div>
+    <div class="topbar-r">
+      <div class="ico-btn" id="themeBtn">
+        <svg id="icoMoon" viewBox="0 0 24 24" style="width:17px;height:17px;fill:none;stroke:var(--fg2);stroke-width:2;stroke-linecap:round"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+        <svg id="icoSun" viewBox="0 0 24 24" style="display:none;width:17px;height:17px;fill:none;stroke:var(--fg2);stroke-width:2;stroke-linecap:round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </div>
+      <div class="ico-btn" id="refreshBtn" onclick="refreshPrices()" title="更新報價">
+        <svg viewBox="0 0 16 16" style="width:16px;height:16px"><path d="M13.65 2.35A7 7 0 1 0 15 8h-2a5 5 0 1 1-1.46-3.54L9 7h6V1z" fill="currentColor"/></svg>
+      </div>
+      <div class="ico-btn" id="addAcctBtn">
+        <svg viewBox="0 0 20 20" style="width:16px;height:16px"><path d="M10 4v12M4 10h12" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <div id="mainContent" style="display:flex;flex-direction:column;flex:1;min-height:0">
+  <div class="hero">
+    <div class="hero-lbl">淨資產總覽
+      <svg viewBox="0 0 20 20" id="eyeBtn"><path d="M10 4C5.6 4 2 10 2 10s3.6 6 8 6 8-6 8-6-3.6-6-8-6zm0 10a4 4 0 110-8 4 4 0 010 8zm0-2a2 2 0 100-4 2 2 0 000 4z" fill="currentColor"/></svg>
+    </div>
+    <div class="hero-main">
+      <span class="hero-num" id="heroNum">—</span>
+      <span class="hero-ccy" id="heroCcy">TWD</span>
+      <span class="chip up" id="heroChip">—</span>
+    </div>
+    <div class="ccy-row">
+      <button class="ccy-btn on" onclick="setCcy('TWD',this)">TWD</button>
+      <button class="ccy-btn" onclick="setCcy('USD',this)">USD</button>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+  <div class="tabs">
+    <button class="tab on" data-p="overview">總覽<span class="tdot"></span></button>
+    <button class="tab" data-p="txlist">明細<span class="tdot"></span></button>
+    <button class="tab" data-p="analysis">分析<span class="tdot"></span></button>
+    <button class="tab" data-p="stocks">股票<span class="tdot"></span></button>
+  </div>
+
+  <div class="pages">
+    <!-- 總覽 -->
+    <div class="page on" id="p-overview">
+      <div class="acct a-liquid" id="ac-liquid">
+        <div class="acct-hd" onclick="toggleAcct('ac-liquid')">
+          <div class="acct-ico"><svg viewBox="0 0 20 20"><path d="M2 5a2 2 0 012-2h12a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V5zm2 0v10h12V5H4zm2 4h2v4H6V9zm4-2h2v6h-2V7zm4 3h2v3h-2v-3z" fill="currentColor"/></svg></div>
+          <div class="acct-info"><div class="acct-name">流動資金</div><div class="acct-sub">現金・電子錢包</div></div>
+          <div class="acct-right"><div class="acct-amt g" id="ttl-liquid">—</div><div class="acct-date">今日</div></div>
+          <div class="achev"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></div>
+        </div>
+        <div class="acct-body" id="body-liquid"><div class="acct-body-inner"></div></div>
+      </div>
+      <div class="acct a-invest" id="ac-invest">
+        <div class="acct-hd" onclick="toggleAcct('ac-invest')">
+          <div class="acct-ico"><svg viewBox="0 0 20 20"><path d="M2 16l5-6 3 3.5 4-5.5 4 4V16H2z" fill="currentColor"/></svg></div>
+          <div class="acct-info"><div class="acct-name">投資</div><div class="acct-sub">股票・加密貨幣</div></div>
+          <div class="acct-right"><div class="acct-amt n" id="ttl-invest">—</div><div class="acct-date">即時</div></div>
+          <div class="achev"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></div>
+        </div>
+        <div class="acct-body" id="body-invest"><div class="acct-body-inner"></div></div>
+      </div>
+      <div class="acct a-fixed" id="ac-fixed">
+        <div class="acct-hd" onclick="toggleAcct('ac-fixed')">
+          <div class="acct-ico"><svg viewBox="0 0 20 20"><path d="M10 2L2 8v10h5v-5h6v5h5V8L10 2z" fill="currentColor"/></svg></div>
+          <div class="acct-info"><div class="acct-name">固定資產</div><div class="acct-sub">房產・車輛</div></div>
+          <div class="acct-right"><div class="acct-amt n" id="ttl-fixed">0</div><div class="acct-date">—</div></div>
+          <div class="achev"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></div>
+        </div>
+        <div class="acct-body" id="body-fixed"><div class="acct-body-inner"></div></div>
+      </div>
+      <div class="acct a-recv" id="ac-recv">
+        <div class="acct-hd" onclick="toggleAcct('ac-recv')">
+          <div class="acct-ico"><svg viewBox="0 0 20 20"><path d="M4 4h12a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2zm1 5v5h10V9H5zm0-3v1.5h4V6H5z" fill="currentColor"/></svg></div>
+          <div class="acct-info"><div class="acct-name">應收款</div><div class="acct-sub">借出款項</div></div>
+          <div class="acct-right"><div class="acct-amt g" id="ttl-recv">0</div><div class="acct-date">—</div></div>
+          <div class="achev"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></div>
+        </div>
+        <div class="acct-body" id="body-recv"><div class="acct-body-inner"></div></div>
+      </div>
+      <div class="acct a-debt" id="ac-debt">
+        <div class="acct-hd" onclick="toggleAcct('ac-debt')">
+          <div class="acct-ico"><svg viewBox="0 0 20 20"><path d="M10 2a8 8 0 110 16A8 8 0 0110 2zm0 2a6 6 0 100 12A6 6 0 0010 4zm0 2v4.5l3 1.8-.9 1.4L9 11.5V6h1z" fill="currentColor"/></svg></div>
+          <div class="acct-info"><div class="acct-name">負債</div><div class="acct-sub">信用卡・貸款</div></div>
+          <div class="acct-right"><div class="acct-amt r" id="ttl-debt">—</div><div class="acct-date" id="debt-date">今日</div></div>
+          <div class="achev"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></div>
+        </div>
+        <div class="acct-body" id="body-debt"><div class="acct-body-inner"></div></div>
+      </div>
+    </div>
+
+    <!-- 明細 -->
+    <div class="page" id="p-txlist">
+      <div class="mbar">
+        <div class="msel" id="mselBtn" onclick="togglePicker()">
+          <span id="mLbl">2026 年 05 月</span>
+          <svg id="mChev" viewBox="0 0 16 16" style="transition:transform .2s"><path d="M4 6l4 4 4-4"/></svg>
+        </div>
+        <div class="ico-btn" style="width:32px;height:32px">
+          <svg viewBox="0 0 20 20" style="width:15px;height:15px"><path d="M13 11l4 4-1.5 1.5-4-4A6 6 0 118 2a6 6 0 015 9zm-5 1a4 4 0 100-8 4 4 0 000 8z" fill="currentColor"/></svg>
+        </div>
+      </div>
+      <div style="border-radius:var(--r);padding:20px;background:linear-gradient(135deg,#17a349,#1db954);position:relative;overflow:hidden;flex-shrink:0">
+        <div style="position:absolute;right:-30px;top:-30px;width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.08)"></div>
+        <div style="font-size:11px;color:rgba(255,255,255,.7);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">月結餘 (<span id="sc-ccy">NT$</span>)</div>
+        <div id="sc-bal" style="font-family:var(--mono);font-size:32px;font-weight:500;color:#fff;letter-spacing:-.02em;margin-bottom:10px">—</div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="font-size:12px;color:rgba(255,255,255,.65)">月支出 <b id="sc-exp" style="color:#fff;font-weight:600">—</b></span>
+          <span style="font-size:12px;color:rgba(255,255,255,.65)">月收入 <b id="sc-inc" style="color:#fff;font-weight:600">—</b></span>
+        </div>
+      </div>
+      <div id="tx-wrap"></div>
+    </div>
+
+    <!-- 分析 -->
+    <div class="page" id="p-analysis">
+      <div class="mbar"><div class="msel" onclick="togglePicker()" style="cursor:pointer"><span id="anlLbl">2026 年 05 月</span><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></div></div>
+      <div style="border-radius:var(--r);padding:20px;background:linear-gradient(135deg,#17a349,#1db954);position:relative;overflow:hidden;flex-shrink:0">
+        <div style="position:absolute;right:-30px;top:-30px;width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.08)"></div>
+        <div style="font-size:11px;color:rgba(255,255,255,.7);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">月結餘 (<span id="anl-ccy">NT$</span>)</div>
+        <div id="anl-bal" style="font-family:var(--mono);font-size:32px;font-weight:500;color:#fff;letter-spacing:-.02em;margin-bottom:10px">—</div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="font-size:12px;color:rgba(255,255,255,.65)">月支出 <b id="anl-exp" style="color:#fff;font-weight:600">—</b></span>
+          <span style="font-size:12px;color:rgba(255,255,255,.65)">月收入 <b id="anl-inc" style="color:#fff;font-weight:600">—</b></span>
+        </div>
+      </div>
+      <div class="anl-row"><button class="anl-btn on" onclick="switchAnl('exp',this)">支出</button><button class="anl-btn" onclick="switchAnl('inc',this)">收入</button></div>
+      <div class="donut-wrap">
+        <div class="donut-box">
+          <svg viewBox="0 0 180 180" id="donut-svg">
+            <circle cx="90" cy="90" r="66" fill="none" stroke="var(--bg4)" stroke-width="26"/>
+          </svg>
+          <div class="dov"><div class="dov-lbl" id="dov-lbl">總支出</div><div class="dov-amt" id="dov-amt">—</div><div class="dov-ccy" id="dov-ccy">NT$</div></div>
+        </div>
+        <div class="leg-row" id="anl-legend"></div>
+      </div>
+      <div class="cat-card" id="anl-cat-card"></div>
+      <div class="chart-wrap">
+        <div class="chart-hd">
+          <div><div class="ch-lbl">淨資產趨勢</div><div class="ch-val" id="chart-ttl">—</div></div>
+          <div class="per-row"><button class="per-btn on" onclick="setPer(this)">月</button><button class="per-btn" onclick="setPer(this)">季</button><button class="per-btn" onclick="setPer(this)">年</button><button class="per-btn" onclick="setPer(this)">全</button></div>
+        </div>
+        <svg id="chart-svg" viewBox="0 0 340 120" style="width:100%;height:120px" preserveAspectRatio="none">
+          <text x="170" y="65" text-anchor="middle" fill="var(--fg2)" font-size="12" font-family="sans-serif">載入中…</text>
+        </svg>
+        <div class="chart-ax" id="chart-ax"></div>
+      </div>
+    </div>
+
+    <!-- 股票 -->
+    <div class="page" id="p-stocks">
+      <div class="sk-summary">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">
+          <div><div class="ch-lbl">股票總市值</div><div class="ch-val" style="font-size:22px;margin-top:5px" id="sk-total">—</div></div>
+          <span class="chip up" id="sk-chip">—</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <span style="font-size:11px;color:var(--fg3)" id="sk-price-ts"></span>
+          <button class="sk-refresh-btn" id="sk-refresh" onclick="refreshPrices()"><svg viewBox="0 0 16 16" width="14" height="14"><path d="M13.65 2.35A7 7 0 1 0 15 8h-2a5 5 0 1 1-1.46-3.54L9 7h6V1z" fill="currentColor"/></svg> 更新報價</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:20px">
+          <div style="position:relative;width:100px;height:100px;flex-shrink:0">
+            <svg viewBox="0 0 120 120" style="width:100px;height:100px" id="sk-pie-svg">
+              <circle cx="60" cy="60" r="44" fill="none" stroke="var(--bg4)" stroke-width="20"/>
+            </svg>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:9px" id="sk-legend"></div>
+        </div>
+      </div>
+      <div class="chart-wrap" style="margin-bottom:4px">
+        <div class="chart-hd">
+          <div><div class="ch-lbl">投資組合趨勢</div><div class="ch-val" id="sk-chart-ttl">—</div></div>
+          <div class="per-row"><button class="per-btn on" onclick="setSkPer(this)">月</button><button class="per-btn" onclick="setSkPer(this)">季</button><button class="per-btn" onclick="setSkPer(this)">年</button><button class="per-btn" onclick="setSkPer(this)">全</button></div>
+        </div>
+        <svg id="sk-chart-svg" viewBox="0 0 340 120" style="width:100%;height:120px" preserveAspectRatio="none">
+          <text x="170" y="65" text-anchor="middle" fill="var(--fg2)" font-size="12" font-family="sans-serif">載入中…</text>
+        </svg>
+        <div class="chart-ax" id="sk-chart-ax"></div>
+      </div>
+      <div class="sec-lbl">🇹🇼 台股</div>
+      <div class="sk-card" id="tw-stocks"></div>
+      <div class="sec-lbl">🇺🇸 美股</div>
+      <div class="sk-card" id="us-stocks"></div>
+      <div class="add-row" onclick="openModal('stock')"><svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>新增股票持倉</div>
+      <div class="delay-note">報價延遲 15 分鐘 · Yahoo Finance</div>
+    </div>
+  </div>
+
+  <button class="fab" onclick="openModal('tx')"><svg viewBox="0 0 20 20"><path d="M10 4v12M4 10h12"/></svg></button>
+  </div>
+  <div id="leveragePage" class="lev-scroll" style="display:none;flex-direction:column;flex:1;min-height:0;overflow-y:scroll;padding:14px 22px 90px">
+    <div id="lev-summary"></div>
+    <div class="lev-tabs">
+      <button class="lev-tab on" onclick="setLevTab('credit',this)">信貸分析</button>
+      <button class="lev-tab" onclick="setLevTab('pledge',this)">質押分析</button>
+    </div>
+    <div id="lev-credit" class="lev-page on"></div>
+    <div id="lev-pledge" class="lev-page"></div>
+  </div>
+  <div id="devPage" style="display:none;flex-direction:column;flex:1;min-height:0">
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;padding:40px 22px">
+      <div style="font-size:48px">🚧</div>
+      <div style="font-size:20px;font-weight:600;color:var(--fg0)" id="devPageTitle"></div>
+      <div style="font-size:14px;color:var(--fg2);text-align:center">此功能正在開發中，敬請期待</div>
+      <button style="margin-top:16px;padding:10px 28px;border-radius:var(--rs);border:1.5px solid var(--bg4);background:var(--bg2);color:var(--fg0);font-family:var(--font);font-size:14px;cursor:pointer" onclick="navTo('overview')">返回記帳總覽</button>
+    </div>
+  </div>
+</div>
+
+<!-- picker -->
+<div class="pov" id="pov">
+  <div id="mPicker" style="display:none;margin:0 22px;background:var(--bg1);border:1px solid var(--bg4);border-radius:var(--r);box-shadow:0 8px 32px rgba(0,0,0,.35)">
+    <div style="display:flex;background:var(--bg2);border-radius:var(--rs);padding:4px;margin:14px 14px 8px;gap:3px">
+      <button id="pMon" onclick="setPickerMode('month')" style="flex:1;padding:9px;border:none;border-radius:8px;font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;background:var(--bg1);color:var(--fg0)">按月</button>
+      <button id="pYr" onclick="setPickerMode('year')" style="flex:1;padding:9px;border:none;border-radius:8px;font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer;background:transparent;color:var(--fg2)">按年</button>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 20px 10px">
+      <button onclick="chgPY(-1)" style="width:32px;height:32px;border-radius:50%;border:1px solid var(--bg4);background:var(--bg2);cursor:pointer;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:14px;height:14px;fill:none;stroke:var(--fg0);stroke-width:2;stroke-linecap:round"><path d="M10 4L6 8l4 4"/></svg></button>
+      <span id="pYrLbl" style="font-size:20px;font-weight:600;font-family:var(--mono);color:var(--fg0)">2026</span>
+      <button onclick="chgPY(1)" style="width:32px;height:32px;border-radius:50%;border:1px solid var(--bg4);background:var(--bg2);cursor:pointer;display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 16 16" style="width:14px;height:14px;fill:none;stroke:var(--fg0);stroke-width:2;stroke-linecap:round"><path d="M6 4l4 4-4 4"/></svg></button>
+    </div>
+    <div id="pMonGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:0 14px 16px"></div>
+    <div id="pYrGrid" style="display:none;grid-template-columns:repeat(3,1fr);gap:6px;padding:0 14px 16px"></div>
+  </div>
+</div>
+
+<!-- context menu -->
+<div class="ctx-backdrop" id="ctxBack" onclick="closeCtx()"></div>
+<div class="ctx-anchor" id="ctxMenu" style="display:none">
+  <div class="ctx-card">
+    <div class="ctx-header">
+      <span class="ctx-name" id="ctx-name">—</span>
+      <span class="ctx-val" id="ctx-val">0</span>
+    </div>
+    <div class="ctx-item" onclick="ctxAction('edit')">編輯帳戶<svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></div>
+    <div class="ctx-item" id="ctx-stat-item" onclick="ctxAction('stat')">設定為「不統計」<svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+    <div class="ctx-item" onclick="ctxAction('transfer')">轉帳<svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14M7 23l-4-4 4-4"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg></div>
+    <div class="ctx-item" onclick="ctxAction('group')">加入／變更群組<svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/></svg></div>
+    <div class="ctx-item" id="ctx-ungrp" onclick="ctxAction('ungroup')" style="display:none">取消群組<svg viewBox="0 0 24 24"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/><line x1="9" y1="12" x2="15" y2="12"/></svg></div>
+    <div class="ctx-item" id="ctx-payoff" onclick="ctxAction('payoff')" style="display:none">提前還清<svg viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><path d="M12 2a10 10 0 100 20A10 10 0 0012 2z"/></svg></div>
+    <div class="ctx-item" id="ctx-refi" onclick="ctxAction('refi')" style="display:none">代償轉貸<svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg></div>
+    <div class="ctx-item danger" onclick="ctxAction('delete')">刪除<svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg></div>
+  </div>
+</div>
+
+<!-- modal: user edit -->
+<div class="backdrop" id="m-user-edit">
+  <div class="modal" style="max-width:380px">
+    <div class="mpull"></div>
+    <div class="mttl" id="ue-title">新增使用者</div>
+    <input type="hidden" id="ue-uid">
+    <!-- avatar -->
+    <div style="text-align:center;margin-bottom:12px">
+      <div class="ue-big-avatar" id="ue-sel-avatar">😊</div>
+    </div>
+    <div class="ue-section-lbl">選擇頭像</div>
+    <div class="ue-avatar-strip">
+      <button class="ue-arrow ue-arrow-l" id="ue-arrow-l" onclick="scrollAvatars(-1)">‹</button>
+      <div class="ue-avatar-viewport" id="ue-avatar-vp">
+        <div class="ue-avatar-track" id="ue-avatar-grid"></div>
+      </div>
+      <button class="ue-arrow ue-arrow-r" id="ue-arrow-r" onclick="scrollAvatars(1)">›</button>
+    </div>
+    <!-- name -->
+    <div class="field" style="margin-top:14px"><label>使用者名稱</label><input type="text" id="ue-name" placeholder="輸入名稱"></div>
+    <!-- theme color -->
+    <div class="ue-section-lbl" style="margin-top:14px">主題色</div>
+    <div class="ue-theme-grid" id="ue-theme-grid"></div>
+    <!-- actions -->
+    <button class="subbtn" style="margin-top:16px" onclick="submitUserEdit()">儲存</button>
+    <div id="ue-del-wrap" style="display:none;margin-top:12px;text-align:center">
+      <span class="ue-del-btn" onclick="deleteUserConfirm()">刪除此使用者</span>
+    </div>
+  </div>
+</div>
+
+<!-- modal: add account -->
+<div class="backdrop" id="m-addacct">
+  <div class="modal">
+    <div class="mpull"></div>
+    <div id="add-s1">
+      <div class="mttl">新增帳戶</div>
+      <p style="font-size:13px;color:var(--fg2);margin-bottom:16px">選擇類別</p>
+      <div class="step-list">
+        <div class="step-item" onclick="addGoS2('liquid')">流動資金<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg></div>
+        <div class="step-item" onclick="addGoS2('invest')">投資<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg></div>
+        <div class="step-item" onclick="addGoS2('fixed')">固定資產<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg></div>
+        <div class="step-item" onclick="addGoS2('recv')">應收款<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg></div>
+        <div class="step-item" onclick="addGoS2('debt')">負債<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg></div>
+      </div>
+    </div>
+    <div id="add-s2" style="display:none">
+      <div class="step-back" onclick="addShowStep(1)"><svg viewBox="0 0 16 16"><path d="M10 4L6 8l4 4"/></svg>返回</div>
+      <div class="mttl" id="add-s2-ttl">選擇帳戶類型</div>
+      <div class="step-list" id="add-s2-list"></div>
+    </div>
+    <div id="add-s3" style="display:none">
+      <div class="step-back" onclick="addShowStep(2)"><svg viewBox="0 0 16 16"><path d="M10 4L6 8l4 4"/></svg>返回</div>
+      <div class="mttl" id="add-s3-ttl">帳戶設定</div>
+      <div class="field"><label>帳戶名稱</label><input type="text" id="add-name" placeholder="自訂名稱"></div>
+      <div class="field"><label>餘額（NT$）</label><input type="number" id="add-bal" placeholder="0" inputmode="decimal" oninput="calcAddLoan()"></div>
+      <div id="add-stock-f" style="display:none">
+        <div class="field" style="position:relative">
+          <label>搜尋股票</label>
+          <div class="sk-search-wrap">
+            <input type="text" id="add-search" placeholder="輸入代碼或名稱，如 0050、QQQ…" autocomplete="off" oninput="onStockSearch(this.value,'add')" style="padding-right:36px">
+            <button class="sk-search-clear" id="add-search-clear" onclick="clearStockSelection('add')">✕</button>
+          </div>
+          <div class="sk-search-results" id="add-search-results"></div>
+        </div>
+        <div id="add-stock-selected" style="display:none">
+          <div class="sk-selected-card" id="add-selected-card"></div>
+          <input type="hidden" id="add-ticker">
+          <input type="hidden" id="add-isUs">
+          <div class="f2">
+            <div class="field"><label>持有股數</label><input type="number" id="add-shares" placeholder="0" oninput="calcAddFee()"></div>
+            <div class="field"><label>買入均價</label><input type="number" id="add-price" placeholder="0.00" step="0.01" oninput="calcAddFee()"></div>
+          </div>
+          <div class="field"><label>實際付出（NT$）</label><input type="number" id="add-paid" placeholder="0" oninput="calcAddFee()"></div>
+          <div class="field"><label>槓桿倍數</label>
+            <select id="add-leverage">
+              <option value="1">1x（一般）</option>
+              <option value="2">2x（正二）</option>
+              <option value="-1">-1x（反一）</option>
+              <option value="3">3x</option>
+              <option value="-2">-2x</option>
+            </select>
+          </div>
+          <div class="info-box" id="add-fee-box" style="display:none">
+            <div class="info-row"><span class="info-lbl">成本小計</span><span class="info-val" id="add-sub">—</span></div>
+            <div class="info-row"><span class="info-lbl">手續費</span><span class="info-val" id="add-fee">—</span></div>
+            <div class="info-row"><span class="info-lbl">實際總成本</span><span class="info-val" id="add-total">—</span></div>
+          </div>
+        </div>
+      </div>
+      <div id="add-debt-f" style="display:none">
+        <div class="field"><label>還款類型</label>
+          <select id="add-repay-type" onchange="onRepayTypeChange()">
+            <option value="本息平均攤還">本息平均攤還</option>
+            <option value="只繳利息（無固定期限）">只繳利息（無固定期限）</option>
+            <option value="只繳利息（有到期日）">只繳利息（有到期日）</option>
+          </select>
+        </div>
+        <div class="f2">
+          <div class="field"><label>年利率（%）</label><input type="number" id="add-rate" placeholder="3.08" step="0.01" oninput="calcAddLoan()"></div>
+          <div class="field" id="add-months-wrap"><label id="add-months-lbl">總期數（月）</label><input type="number" id="add-months" placeholder="84" oninput="calcAddLoan()"></div>
+        </div>
+        <div class="f2">
+          <div class="field"><label>還款起始日</label><input type="date" id="add-loan-start"></div>
+          <div class="field"><label>每月扣款日</label><input type="number" id="add-pay-day" placeholder="22" min="1" max="28"></div>
+        </div>
+        <div class="field" id="add-pmt-wrap"><label>每期還款金額（選填，留空自動計算）</label><input type="number" id="add-pmt-override" placeholder="系統自動計算" step="1" oninput="calcAddLoan()"></div>
+        <div class="info-box" id="add-loan-box" style="display:none">
+          <div class="info-row"><span class="info-lbl" id="add-monthly-lbl">每月還款</span><span class="info-val" id="add-monthly">—</span></div>
+          <div class="info-row" id="add-pp-row"><span class="info-lbl">每月本金</span><span class="info-val" id="add-pp">—</span></div>
+          <div class="info-row"><span class="info-lbl">每月利息</span><span class="info-val" id="add-ii">—</span></div>
+          <div class="info-row" id="add-total-row"><span class="info-lbl">總還款金額</span><span class="info-val" id="add-total-pay">—</span></div>
+          <div class="info-row"><span class="info-lbl">總利息支出</span><span class="info-val" id="add-total-int">—</span></div>
+        </div>
+      </div>
+      <div id="add-pledge-f" style="display:none">
+        <div style="font-size:11px;color:var(--fg2);text-transform:uppercase;letter-spacing:.07em;margin:4px 0 8px">🔒 質押標的</div>
+        <div id="add-pledge-stocks-list"></div>
+      </div>
+      <div class="field"><label>說明（選填）</label><input type="text" id="add-desc" placeholder="如：玉山銀行"></div>
+      <div class="tog-row"><span class="tog-lbl">納入統計與淨值</span><button class="tog on" id="add-stat-tog" onclick="this.classList.toggle('on')"></button></div>
+      <button class="subbtn" onclick="submitAddAcct()">新增帳戶</button>
+    </div>
+  </div>
+</div>
+
+<!-- modal: edit -->
+<div class="backdrop" id="m-edit">
+  <div class="modal">
+    <div class="mpull"></div>
+    <div class="mttl" id="edit-ttl">編輯帳戶</div>
+    <div class="field"><label>帳戶名稱</label><input type="text" id="edit-name"></div>
+    <div class="field"><label>餘額（NT$）</label><input type="number" id="edit-bal" oninput="calcEditLoan()"></div>
+    <div class="field"><label>說明（選填）</label><input type="text" id="edit-desc"></div>
+    <div class="tog-row"><span class="tog-lbl">納入統計與淨值</span><button class="tog on" id="edit-stat" onclick="this.classList.toggle('on')"></button></div>
+    <!-- stock leverage -->
+    <div id="edit-lev-section" style="display:none">
+      <div class="field"><label>槓桿倍數</label>
+        <select id="edit-leverage">
+          <option value="1">1x（一般）</option>
+          <option value="2">2x（正二）</option>
+          <option value="-1">-1x（反一）</option>
+          <option value="3">3x</option>
+          <option value="-2">-2x</option>
+        </select>
+      </div>
+    </div>
+    <!-- loan params section -->
+    <div id="edit-loan-section" style="display:none">
+      <div class="edit-lock-bar">
+        <span class="edit-lock-title">貸款參數</span>
+        <button class="edit-lock-btn" id="edit-lock-btn" onclick="toggleEditLock()">
+          <svg viewBox="0 0 16 16" style="width:12px;height:12px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;flex-shrink:0"><rect x="3" y="7" width="10" height="8" rx="1"/><path d="M5 7V5a3 3 0 016 0v2"/></svg>
+          解鎖修改
+        </button>
+      </div>
+      <div id="edit-loan-fields">
+        <div class="field"><label>還款類型</label>
+          <select id="edit-repay-type" onchange="onEditRepayTypeChange()">
+            <option value="本息平均攤還">本息平均攤還</option>
+            <option value="只繳利息（無固定期限）">只繳利息（無固定期限）</option>
+            <option value="只繳利息（有到期日）">只繳利息（有到期日）</option>
+          </select>
+        </div>
+        <div class="f2">
+          <div class="field"><label>年利率（%）</label><input type="number" id="edit-rate" step="0.01" oninput="calcEditLoan()"></div>
+          <div class="field" id="edit-months-wrap"><label id="edit-months-lbl">總期數（月）</label><input type="number" id="edit-months" oninput="calcEditLoan()"></div>
+        </div>
+        <div class="f2">
+          <div class="field"><label>還款起始日</label><input type="date" id="edit-loan-start"></div>
+          <div class="field"><label>每月扣款日</label><input type="number" id="edit-pay-day" min="1" max="28"></div>
+        </div>
+        <div class="field" id="edit-pmt-wrap"><label>每期還款金額（選填）</label><input type="number" id="edit-pmt-override" placeholder="系統自動計算" oninput="calcEditLoan()"></div>
+        <div class="info-box" id="edit-loan-preview" style="display:none">
+          <div class="info-row"><span class="info-lbl">每月還款</span><span class="info-val" id="edit-monthly">—</span></div>
+          <div class="info-row" id="edit-pp-row"><span class="info-lbl">每月本金</span><span class="info-val" id="edit-pp">—</span></div>
+          <div class="info-row"><span class="info-lbl">每月利息</span><span class="info-val" id="edit-ii">—</span></div>
+        </div>
+      </div>
+    </div>
+    <!-- pledge stocks section -->
+    <div id="edit-pledge-section" style="display:none">
+      <div style="font-size:11px;color:var(--fg2);text-transform:uppercase;letter-spacing:.07em;margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--bg3)">🔒 質押標的</div>
+      <div id="edit-pledge-stocks-list"></div>
+    </div>
+    <button class="subbtn" onclick="submitEdit()">儲存</button>
+    <button class="subbtn danger" onclick="submitDelAcct()">刪除帳戶</button>
+  </div>
+</div>
+
+<!-- modal: group -->
+<div class="backdrop" id="m-grp">
+  <div class="modal">
+    <div class="mpull"></div><div class="mttl">加入群組</div>
+    <div id="grp-existing"></div>
+    <div class="field" style="margin-top:12px"><label>或建立新群組</label><input type="text" id="grp-new" placeholder="群組名稱"></div>
+    <button class="subbtn" onclick="submitGrp()">確認</button>
+  </div>
+</div>
+
+<!-- modal: tx -->
+<div class="backdrop" id="m-tx">
+  <div class="modal">
+    <div class="mpull"></div><div class="mttl">新增記錄</div>
+    <div class="type-row">
+      <button class="tbtn e" onclick="setTxType('e',this)">支出</button>
+      <button class="tbtn" onclick="setTxType('i',this)">收入</button>
+      <button class="tbtn" onclick="setTxType('tf',this)">轉帳</button>
+    </div>
+    <div class="field"><label>金額（NT$）</label><input type="number" id="f-amt" placeholder="0" inputmode="decimal" style="font-size:22px;font-family:var(--mono)"></div>
+    <div class="f2">
+      <div class="field"><label>日期</label><input type="date" id="f-date"></div>
+      <div class="field"><label>帳戶</label>
+        <div class="acct-pick-btn" id="f-acct-btn" onclick="openAcctPicker('f-acct')">選擇帳戶</div>
+        <input type="hidden" id="f-acct">
+      </div>
+    </div>
+    <div class="f2">
+      <div class="field"><label>類別</label>
+        <div class="acct-pick-btn" id="f-cat-btn" onclick="openCatPicker()">選擇類別</div>
+        <input type="hidden" id="f-cat">
+      </div>
+      <div class="field" style="display:flex;align-items:flex-end">
+        <button style="padding:12px;border-radius:var(--rs);border:1.5px solid var(--bg4);background:var(--bg2);color:var(--fg2);cursor:pointer;font-size:14px;margin-bottom:0" onclick="openModal('cat')">⚙</button>
+      </div>
+    </div>
+    <div class="field"><label>備註</label><input type="text" id="f-note" placeholder="選填備註..."></div>
+    <div class="rec-row"><span class="rec-lbl">定期排程</span><button class="tog" id="rec-tog" onclick="this.classList.toggle('on')"></button></div>
+    <button class="subbtn" onclick="submitTx()">新增記錄</button>
+  </div>
+</div>
+
+<!-- modal: stock -->
+<div class="backdrop" id="m-stock">
+  <div class="modal">
+    <div class="mpull"></div><div class="mttl">新增股票持倉</div>
+    <div class="field" style="position:relative">
+      <label>搜尋股票</label>
+      <div class="sk-search-wrap">
+        <input type="text" id="s-search" placeholder="輸入代碼或名稱，如 0050、QQQ…" autocomplete="off" oninput="onStockSearch(this.value,'s')" style="padding-right:36px">
+        <button class="sk-search-clear" id="s-search-clear" onclick="clearStockSelection('s')">✕</button>
+      </div>
+      <div class="sk-search-results" id="s-search-results"></div>
+    </div>
+    <div id="s-selected" style="display:none">
+      <div class="sk-selected-card" id="s-selected-card"></div>
+      <input type="hidden" id="s-tk">
+      <input type="hidden" id="s-mkt">
+      <div class="f2">
+        <div class="field"><label>持有股數</label><input type="number" id="s-sh" placeholder="0" oninput="calcSkFee()"></div>
+        <div class="field"><label>買入均價</label><input type="number" id="s-cp" placeholder="0.00" step="0.01" oninput="calcSkFee()"></div>
+      </div>
+      <div class="field"><label>實際付出總金額（NT$）</label><input type="number" id="s-paid" placeholder="0" oninput="calcSkFee()"></div>
+      <div class="field"><label>槓桿倍數</label>
+        <select id="s-leverage">
+          <option value="1">1x（一般）</option>
+          <option value="2">2x（正二）</option>
+          <option value="-1">-1x（反一）</option>
+          <option value="3">3x</option>
+          <option value="-2">-2x</option>
+        </select>
+      </div>
+      <div class="info-box" id="sk-fee-box" style="display:none">
+        <div class="info-row"><span class="info-lbl">成本小計（股數×均價）</span><span class="info-val" id="sk-sub">—</span></div>
+        <div class="info-row"><span class="info-lbl">手續費</span><span class="info-val" id="sk-fee">—</span></div>
+        <div class="info-row"><span class="info-lbl">實際總成本</span><span class="info-val" id="sk-total-cost">—</span></div>
+      </div>
+      <div class="field"><label>顯示名稱（選填）</label><input type="text" id="s-nm" placeholder="台灣50 ETF"></div>
+      <button class="subbtn" onclick="submitStock()">新增持倉</button>
+    </div>
+  </div>
+</div>
+
+<!-- modal: transfer -->
+<div class="backdrop" id="m-transfer">
+  <div class="modal">
+    <div class="mpull"></div><div class="mttl">轉帳</div>
+    <div class="field"><label>金額（NT$）</label><input type="number" id="tf-amt" placeholder="0" inputmode="decimal" style="font-size:22px;font-family:var(--mono)"></div>
+    <div class="field">
+      <label>從</label>
+      <div class="acct-pick-btn" id="tf-from-btn" onclick="openAcctPicker('tf-from')">選擇轉出帳戶</div>
+      <input type="hidden" id="tf-from-id">
+    </div>
+    <div style="text-align:center;padding:4px 0;color:var(--fg3);font-size:18px">↓</div>
+    <div class="field">
+      <label>到</label>
+      <div class="acct-pick-btn" id="tf-to-btn" onclick="openAcctPicker('tf-to')">選擇轉入帳戶</div>
+      <input type="hidden" id="tf-to-id">
+    </div>
+    <div class="f2">
+      <div class="field"><label>日期</label><input type="date" id="tf-date"></div>
+      <div class="field"><label>備註</label><input type="text" id="tf-note" placeholder="選填"></div>
+    </div>
+    <button class="subbtn" onclick="submitTransfer()">確認轉帳</button>
+  </div>
+</div>
+
+<!-- hierarchical account picker -->
+<div class="backdrop" id="m-acct-picker">
+  <div class="modal">
+    <div class="mpull"></div>
+    <div id="ap-header">
+      <div class="mttl" id="ap-title">選擇帳戶</div>
+    </div>
+    <div id="ap-back" class="step-back" style="display:none" onclick="apGoBack()"><svg viewBox="0 0 16 16"><path d="M10 4L6 8l4 4"/></svg>返回</div>
+    <div id="ap-content"></div>
+  </div>
+</div>
+
+<!-- modal: category picker -->
+<div class="backdrop" id="m-cat-picker">
+  <div class="modal">
+    <div class="mpull"></div>
+    <div id="cp-header">
+      <div class="mttl" id="cp-title">選擇類別</div>
+    </div>
+    <div id="cp-back" class="step-back" style="display:none" onclick="cpGoBack()"><svg viewBox="0 0 16 16"><path d="M10 4L6 8l4 4"/></svg>返回</div>
+    <div id="cp-content"></div>
+  </div>
+</div>
+
+<!-- modal: category manager -->
+<div class="backdrop" id="m-cat">
+  <div class="modal">
+    <div class="mpull"></div><div class="mttl">管理類別</div>
+    <div id="cat-list"></div>
+    <div style="position:relative">
+      <div id="emoji-picker" class="emoji-picker"></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;align-items:center">
+      <div class="emoji-btn" id="cat-new-icon-btn" onclick="toggleEmojiPicker()">📌</div>
+      <input type="text" id="cat-new-name" placeholder="類別名稱" style="flex:1;min-width:80px;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:12px 14px;font-family:var(--font);font-size:15px;color:var(--fg0);outline:none">
+      <select id="cat-new-grp" onchange="onGrpSelectChange()" style="width:120px;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:12px 10px;font-family:var(--font);font-size:13px;color:var(--fg0);outline:none;cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url('data:image/svg+xml,<svg viewBox=\"0 0 12 8\" xmlns=\"http://www.w3.org/2000/svg\"><path d=\"M1 1l5 5 5-5\" stroke=\"%23888\" fill=\"none\" stroke-width=\"1.5\"/></svg>');background-repeat:no-repeat;background-position:right 10px center;background-size:10px;padding-right:28px"></select>
+      <button style="padding:12px 18px;border-radius:var(--rs);border:none;background:var(--green);color:#fff;font-family:var(--font);font-size:14px;font-weight:600;cursor:pointer" onclick="addCat()">新增</button>
+    </div>
+  </div>
+</div>
+
+<!-- modal: payoff -->
+<div class="backdrop" id="m-payoff">
+  <div class="modal">
+    <div class="mpull"></div>
+    <div class="mttl">提前還清</div>
+    <div class="info-box" style="margin-bottom:16px">
+      <div class="info-row"><span class="info-lbl">帳戶</span><span class="info-val" id="payoff-name">—</span></div>
+      <div class="info-row"><span class="info-lbl">剩餘本金</span><span class="info-val" id="payoff-bal">—</span></div>
+      <div class="info-row"><span class="info-lbl">已還期數</span><span class="info-val" id="payoff-periods">—</span></div>
+    </div>
+    <div class="field">
+      <label>還款金額（NT$）</label>
+      <div style="display:flex;gap:8px">
+        <input type="number" id="payoff-amount" placeholder="輸入金額" inputmode="decimal" style="flex:1" oninput="onPayoffAmountChange()">
+        <button onclick="setPayoffFull()" style="padding:0 16px;border-radius:var(--rs);border:1.5px solid var(--green);background:var(--gbg);color:var(--green);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0">全部</button>
+      </div>
+    </div>
+    <div id="payoff-remain-row" style="display:none;font-size:12px;color:var(--fg2);background:var(--bg2);border-radius:var(--rs);padding:8px 14px;margin-top:-6px;margin-bottom:10px">
+      還款後剩餘：<span id="payoff-remain" style="font-family:var(--mono)">—</span>
+    </div>
+    <div class="field"><label>還款日期</label><input type="date" id="payoff-date"></div>
+    <div class="tog-row"><span class="tog-lbl">自動建立負債沖銷記帳</span><button class="tog on" id="payoff-create-tx" onclick="this.classList.toggle('on')"></button></div>
+    <button class="subbtn" id="payoff-btn" onclick="submitPayoff()">確認還款</button>
+    <button class="subbtn danger" onclick="$('m-payoff').classList.remove('on')">取消</button>
+  </div>
+</div>
+
+<!-- modal: refinance -->
+<div class="backdrop" id="m-refi">
+  <div class="modal">
+    <div class="mpull"></div>
+    <div class="mttl">代償轉貸</div>
+    <div class="info-box" id="refi-old-info" style="margin-bottom:16px"></div>
+    <div style="font-size:11px;color:var(--fg2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">新貸款設定</div>
+    <div class="field"><label>新貸款名稱</label><input type="text" id="refi-name" placeholder="如：玉山代償貸款"></div>
+    <div class="field"><label>代償金額（NT$）</label><input type="number" id="refi-bal"></div>
+    <div class="field"><label>還款類型</label>
+      <select id="refi-repay-type">
+        <option value="本息平均攤還">本息平均攤還</option>
+        <option value="只繳利息（無固定期限）">只繳利息（無固定期限）</option>
+        <option value="只繳利息（有到期日）">只繳利息（有到期日）</option>
+      </select>
+    </div>
+    <div class="f2">
+      <div class="field"><label>年利率（%）</label><input type="number" id="refi-rate" step="0.01" placeholder="0.00"></div>
+      <div class="field"><label>總期數（月）</label><input type="number" id="refi-months" placeholder="84"></div>
+    </div>
+    <div class="f2">
+      <div class="field"><label>還款起始日</label><input type="date" id="refi-start"></div>
+      <div class="field"><label>每月扣款日</label><input type="number" id="refi-pay-day" min="1" max="28"></div>
+    </div>
+    <button class="subbtn" onclick="submitRefi()">🔄 確認代償</button>
+    <button class="subbtn danger" onclick="$('m-refi').classList.remove('on')">取消</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js?v=4"></script>
+</body>
+</html>
