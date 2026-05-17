@@ -1,3 +1,8 @@
+// ── Supabase Client ──
+var SUPABASE_URL='https://hpajiexvcmkidbgreaqy.supabase.co';
+var SUPABASE_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwYWppZXh2Y21raWRiZ3JlYXF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwMTY2NTQsImV4cCI6MjA5NDU5MjY1NH0.ZIxx-cJRHxLAv-TlPpjvFGBndzs-GE9ptZENh81AQQQ';
+var sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON);
+
 var MONTHS=['01','02','03','04','05','06','07','08','09','10','11','12'];
 var DOTS=['#1db954','#3d8ef8','#f5a623','#a78bfa','#2dd4bf','#f25c5c','#34d399','#fb923c'];
 var DEBT_TYPES=['信用卡','信用貸款','股票質押','房貸','車貸','其他貸款','應付款','其他負債'];
@@ -35,34 +40,53 @@ function fmtAmt(n){return(n<0?'－':'')+fmtN(n);}
 function cvt(n){return st.ccy==='USD'?Math.round(n/st.fxRate):Math.round(n);}
 function ccySym(){return st.ccy==='USD'?'US$':'NT$';}
 
-// ── Price Refresh (yfinance) ──
+// ── Price Refresh (client-side via Yahoo Finance) ──
+var CORS_PROXY='https://api.allorigins.win/raw?url=';
+function yfQuote(symbol){
+  var url='https://query1.finance.yahoo.com/v8/finance/chart/'+encodeURIComponent(symbol)+'?range=1d&interval=1d';
+  return fetch(CORS_PROXY+encodeURIComponent(url)).then(function(r){return r.json();}).then(function(d){
+    var meta=d&&d.chart&&d.chart.result&&d.chart.result[0]&&d.chart.result[0].meta;
+    if(meta&&meta.regularMarketPrice>0) return meta.regularMarketPrice;
+    return null;
+  }).catch(function(){return null;});
+}
 function refreshPrices(silent){
   var btn=$('sk-refresh');
   if(btn){btn.disabled=true;btn.textContent='更新中…';}
   var topBtn=$('refreshBtn');
   if(topBtn){topBtn.classList.add('spinning');topBtn.style.pointerEvents='none';}
-  return api('POST','/api/prices/refresh',{}).then(function(res){
-    if(res.fx_rate) st.fxRate=res.fx_rate;
+  var stocks=data.invest.items.filter(function(it){return it.sk&&it.sk.ticker&&it.stat;});
+  var promises=stocks.map(function(it){
+    var sym=it.sk.ticker;
+    if(!it.sk.isUs&&!sym.endsWith('.TW')&&!sym.endsWith('.TWO')) sym=sym+'.TW';
+    return yfQuote(sym).then(function(price){
+      if(!price&&!it.sk.isUs) return yfQuote(it.sk.ticker+'.TWO');
+      return price;
+    }).then(function(price){return {it:it,price:price};});
+  });
+  // also fetch FX rate
+  promises.push(yfQuote('TWD=X').then(function(p){return {fx:true,price:p};}));
+  return Promise.all(promises).then(function(results){
+    var updated=[];
+    results.forEach(function(r){
+      if(r.fx&&r.price){st.fxRate=r.price;return;}
+      if(!r.it||!r.price)return;
+      var it=r.it,oldPrice=it.sk.curPrice;
+      it.sk.curPrice=r.price;
+      var newBal=it.sk.isUs?Math.round(it.sk.shares*r.price*st.fxRate):Math.round(it.sk.shares*r.price);
+      it.bal=newBal;
+      updated.push(it);
+      // update Supabase in background
+      sb.from('accounts').update({stock_data:it.sk,balance:newBal}).eq('id',it.id).then(function(){});
+    });
     st.priceTs=new Date();
-    if(res.updated&&res.updated.length){
-      // update in-memory data
-      res.updated.forEach(function(u){
-        var it=allAccounts.find(function(a){return a.id===u.id;});
-        if(it&&it.sk){
-          it.sk.curPrice=u.newPrice;
-          it.bal=u.balance;
-        }
-      });
-      // re-render affected pages
-      renderOverview();renderStocks();updateHero();
-      if(typeof renderLeverage==='function')renderLeverage();
-    }
+    if(updated.length){renderOverview();renderStocks();updateHero();if(typeof renderLeverage==='function')renderLeverage();}
     if(btn){btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 16 16" width="14" height="14"><path d="M13.65 2.35A7 7 0 1 0 15 8h-2a5 5 0 1 1-1.46-3.54L9 7h6V1z" fill="currentColor"/></svg> 更新報價';}
     if(topBtn){topBtn.classList.remove('spinning');topBtn.style.pointerEvents='';}
     var tsEl=$('sk-price-ts');
     if(tsEl&&st.priceTs) tsEl.textContent='更新於 '+st.priceTs.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});
-    if(!silent&&res.updated&&res.updated.length) toast('✓ 已更新 '+res.updated.length+' 檔報價');
-    if(!silent&&res.updated&&!res.updated.length) toast('所有報價已是最新');
+    if(!silent&&updated.length) toast('✓ 已更新 '+updated.length+' 檔報價');
+    if(!silent&&!updated.length) toast('所有報價已是最新');
   }).catch(function(e){
     if(btn){btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 16 16" width="14" height="14"><path d="M13.65 2.35A7 7 0 1 0 15 8h-2a5 5 0 1 1-1.46-3.54L9 7h6V1z" fill="currentColor"/></svg> 更新報價';}
     if(topBtn){topBtn.classList.remove('spinning');topBtn.style.pointerEvents='';}
@@ -80,7 +104,23 @@ function onStockSearch(q,prefix){
   box.innerHTML='<div class="sk-sr-loading">搜尋中…</div>';
   box.classList.add('on');
   _skSearchTimer=setTimeout(function(){
-    api('GET','/api/stocks/search?q='+encodeURIComponent(q)).then(function(res){
+    var searchUrl='https://query2.finance.yahoo.com/v1/finance/search?q='+encodeURIComponent(q)+'&quotesCount=8&newsCount=0&listsCount=0&enableFuzzyQuery=true';
+    fetch(CORS_PROXY+encodeURIComponent(searchUrl)).then(function(r){return r.json();}).then(function(data_resp){
+      var us_ex=['NGM','NMS','NYQ','PCX','BTS','NYS','NAS','ASE'];
+      var tw_ex=['TAI','TWO','TPE'];
+      var res=[];
+      (data_resp.quotes||[]).forEach(function(item){
+        var qt=item.quoteType||'';
+        if(qt!=='EQUITY'&&qt!=='ETF'&&qt!=='MUTUALFUND')return;
+        var sym=item.symbol||'',exch=item.exchange||'';
+        var isTw=tw_ex.indexOf(exch)>=0||sym.endsWith('.TW')||sym.endsWith('.TWO');
+        var isUs=us_ex.indexOf(exch)>=0;
+        if(!isTw&&!isUs&&q.toUpperCase().indexOf(sym.toUpperCase().split('.')[0])<0)return;
+        res.push({symbol:isTw?sym.replace('.TW','').replace('.TWO',''):sym,yahooSymbol:sym,name:item.shortname||item.longname||sym,exchange:exch,type:qt,isTw:isTw});
+      });
+      res.sort(function(a,b){return(a.isTw?0:1)-(b.isTw?0:1);});
+      return res;
+    }).then(function(res){
       if(!res||!res.length){box.innerHTML='<div class="sk-sr-loading">找不到「'+q+'」</div>';return;}
       var html='';
       res.forEach(function(r,i){
@@ -112,7 +152,14 @@ function selectStock(idx,prefix){
   card.innerHTML='<div class="sk-sr-loading">取得報價中…</div>';
 
   var isTw=r.isTw;
-  api('GET','/api/stocks/quote?symbol='+encodeURIComponent(r.symbol)+'&tw='+(isTw?'1':'0')).then(function(q){
+  var yfSym=isTw?(r.symbol+'.TW'):r.symbol;
+  yfQuote(yfSym).then(function(price){
+    if(!price&&isTw) return yfQuote(r.symbol+'.TWO');
+    return price;
+  }).then(function(price){
+    var q={price:price||0,name:r.name};
+    return q;
+  }).then(function(q){
     var price=q.price;
     card.innerHTML='<div class="sk-sr-ico" style="background:'+(isTw?'#1db95422':'#3d8ef822')+';color:'+(isTw?'#1db954':'#3d8ef8')+'">'+r.symbol.charAt(0)+'</div>'
       +'<div class="sk-sr-info"><div class="sk-sr-sym">'+r.symbol+' <span class="sk-sr-tag '+(isTw?'tw':'us')+'">'+(isTw?'台股':'美股')+'</span></div>'
@@ -176,8 +223,8 @@ var THEME_COLORS=[
 ];
 
 function loadUsers(){
-  return fetch('/api/users',{headers:{'X-User-Id':String(st.userId)}}).then(function(r){return r.json();}).then(function(list){
-    st.users=list;
+  return sb.from('users').select('*').order('id').then(function(res){
+    st.users=res.data||[];
     renderUserList();
   });
 }
@@ -335,7 +382,7 @@ function submitUserEdit(){
   if(uid){
     // edit existing
     uid=parseInt(uid);
-    api('PUT','/api/users/'+uid,{name:name,avatar:avatar}).then(function(){
+    sb.from('users').update({name:name,avatar:avatar}).eq('id',uid).then(function(){
       if(theme) localStorage.setItem('ft_theme_'+uid,theme);
       else localStorage.removeItem('ft_theme_'+uid);
       $('m-user-edit').classList.remove('on');
@@ -344,9 +391,15 @@ function submitUserEdit(){
     });
   } else {
     // create new
-    api('POST','/api/users',{name:name,avatar:avatar}).then(function(res){
-      if(res.id){
-        if(theme) localStorage.setItem('ft_theme_'+res.id,theme);
+    sb.from('users').insert({name:name,avatar:avatar}).select().single().then(function(res){
+      if(res.data&&res.data.id){
+        var newId=res.data.id;
+        if(theme) localStorage.setItem('ft_theme_'+newId,theme);
+        // seed default categories for new user
+        sb.from('categories').select('name,icon,sort_order,cat_group').eq('user_id',1).order('sort_order').then(function(catRes){
+          var cats=(catRes.data||[]).map(function(c){return{user_id:newId,name:c.name,icon:c.icon,sort_order:c.sort_order,cat_group:c.cat_group};});
+          if(cats.length) sb.from('categories').insert(cats).then(function(){});
+        });
         $('m-user-edit').classList.remove('on');
         loadUsers();
         toast('已新增使用者「'+name+'」');
@@ -371,7 +424,7 @@ function deleteUserConfirm(){
     +'</div></div>';
 }
 function doDeleteUser(uid){
-  api('DELETE','/api/users/'+uid).then(function(){
+  sb.from('users').delete().eq('id',uid).then(function(){
     localStorage.removeItem('ft_theme_'+uid);
     $('m-user-edit').classList.remove('on');
     if(st.userId===uid){st.userId=1;localStorage.setItem('ft_uid','1');}
@@ -406,11 +459,224 @@ function navTo(page){
   }
 }
 
-// ── API helpers ──
+// ── Supabase API helpers ──
+// Compatibility wrapper: translates old api(method, url, body) calls to Supabase
 function api(method,url,body){
-  var opts={method:method,headers:{'Content-Type':'application/json','X-User-Id':String(st.userId)}};
-  if(body)opts.body=JSON.stringify(body);
-  return fetch(url,opts).then(function(r){return r.json();});
+  // Parse URL to determine table and operation
+  var m;
+  // GET /api/accounts
+  if(method==='GET'&&url==='/api/accounts'){
+    return sb.from('accounts').select('*').eq('user_id',st.userId).order('category').order('id').then(function(res){
+      var result={};
+      (res.data||[]).forEach(function(r){
+        if(!result[r.category])result[r.category]=[];
+        r.stat=!!r.stat;
+        result[r.category].push(r);
+      });
+      return result;
+    });
+  }
+  // POST /api/accounts
+  if(method==='POST'&&url==='/api/accounts'){
+    var row={user_id:st.userId,category:body.category,name:body.name,type:body.type,balance:body.balance,description:body.description||'',dot_color:body.dot_color||'#1db954',stat:body.stat!==false,group_name:body.group_name||null,stock_data:body.stock_data||null,loan_data:body.loan_data||null};
+    return sb.from('accounts').insert(row).select().single().then(function(res){return res.data||{};});
+  }
+  // PUT /api/accounts/:id
+  m=url.match(/^\/api\/accounts\/(\d+)$/);
+  if(method==='PUT'&&m){
+    var aid=parseInt(m[1]),upd={};
+    ['name','balance','description','stat','group_name','dot_color','type','category','stock_data','loan_data'].forEach(function(f){
+      if(body.hasOwnProperty(f)){
+        upd[f]=body[f];
+      }
+    });
+    return sb.from('accounts').update(upd).eq('id',aid).then(function(res){return{ok:true};});
+  }
+  // DELETE /api/accounts/:id
+  m=url.match(/^\/api\/accounts\/(\d+)$/);
+  if(method==='DELETE'&&m){
+    return sb.from('accounts').delete().eq('id',parseInt(m[1])).then(function(){return{ok:true};});
+  }
+  // GET /api/groups
+  if(method==='GET'&&url==='/api/groups'){
+    return sb.from('groups').select('*').eq('user_id',st.userId).order('category').order('name').then(function(res){
+      var result={};
+      (res.data||[]).forEach(function(r){
+        if(!result[r.category])result[r.category]=[];
+        result[r.category].push(r.name);
+      });
+      return result;
+    });
+  }
+  // POST /api/groups
+  if(method==='POST'&&url==='/api/groups'){
+    return sb.from('groups').upsert({user_id:st.userId,category:body.category,name:body.name},{onConflict:'user_id,category,name'}).then(function(){return{ok:true};});
+  }
+  // GET /api/transactions?month=...
+  if(method==='GET'&&url.indexOf('/api/transactions')===0){
+    var monthMatch=url.match(/month=([^&]+)/);
+    var q=sb.from('transactions').select('*').eq('user_id',st.userId);
+    if(monthMatch) q=q.like('date',monthMatch[1]+'%');
+    return q.order('date',{ascending:false}).order('id',{ascending:false}).then(function(res){
+      return (res.data||[]).map(function(r){r.recurring=!!r.recurring;return r;});
+    });
+  }
+  // POST /api/transactions
+  if(method==='POST'&&url==='/api/transactions'){
+    var txRow={user_id:st.userId,date:body.date,name:body.name,category:body.category,amount:body.amount,note:body.note||'',icon:body.icon||'',recurring:!!body.recurring,account_id:body.account_id||null};
+    // Update account balance
+    if(body.account_id){
+      sb.from('accounts').select('balance').eq('id',body.account_id).single().then(function(r){
+        if(r.data) sb.from('accounts').update({balance:r.data.balance+body.amount}).eq('id',body.account_id).then(function(){});
+      });
+    }
+    return sb.from('transactions').insert(txRow).select().single().then(function(res){return res.data||{};});
+  }
+  // PUT /api/transactions/:id
+  m=url.match(/^\/api\/transactions\/(\d+)$/);
+  if(method==='PUT'&&m){
+    var tid=parseInt(m[1]);
+    // Get old transaction for balance adjustment
+    return sb.from('transactions').select('*').eq('id',tid).single().then(function(oldRes){
+      var old=oldRes.data;
+      var upd={};
+      ['date','name','category','amount','note','icon','recurring','account_id'].forEach(function(f){
+        if(body.hasOwnProperty(f))upd[f]=body[f];
+      });
+      if(upd.hasOwnProperty('recurring'))upd.recurring=!!upd.recurring;
+      // Adjust account balances
+      if(old){
+        var oldAmt=old.amount,newAmt=body.hasOwnProperty('amount')?body.amount:oldAmt;
+        var oldAcct=old.account_id,newAcct=body.hasOwnProperty('account_id')?body.account_id:oldAcct;
+        if(oldAcct&&oldAcct===newAcct){
+          var diff=newAmt-oldAmt;
+          if(diff!==0) sb.from('accounts').select('balance').eq('id',oldAcct).single().then(function(r){
+            if(r.data) sb.from('accounts').update({balance:r.data.balance+diff}).eq('id',oldAcct).then(function(){});
+          });
+        } else {
+          if(oldAcct) sb.from('accounts').select('balance').eq('id',oldAcct).single().then(function(r){
+            if(r.data) sb.from('accounts').update({balance:r.data.balance-oldAmt}).eq('id',oldAcct).then(function(){});
+          });
+          if(newAcct) sb.from('accounts').select('balance').eq('id',newAcct).single().then(function(r){
+            if(r.data) sb.from('accounts').update({balance:r.data.balance+newAmt}).eq('id',newAcct).then(function(){});
+          });
+        }
+      }
+      return sb.from('transactions').update(upd).eq('id',tid).then(function(){return{ok:true};});
+    });
+  }
+  // DELETE /api/transactions/:id
+  m=url.match(/^\/api\/transactions\/(\d+)$/);
+  if(method==='DELETE'&&m){
+    var dtid=parseInt(m[1]);
+    return sb.from('transactions').select('*').eq('id',dtid).single().then(function(oldRes){
+      var old=oldRes.data;
+      if(old&&old.account_id){
+        sb.from('accounts').select('balance').eq('id',old.account_id).single().then(function(r){
+          if(r.data) sb.from('accounts').update({balance:r.data.balance-old.amount}).eq('id',old.account_id).then(function(){});
+        });
+      }
+      return sb.from('transactions').delete().eq('id',dtid).then(function(){return{ok:true};});
+    });
+  }
+  // GET /api/categories
+  if(method==='GET'&&url==='/api/categories'){
+    return sb.from('categories').select('*').eq('user_id',st.userId).order('sort_order').order('id').then(function(res){return res.data||[];});
+  }
+  // POST /api/categories
+  if(method==='POST'&&url==='/api/categories'){
+    return sb.from('categories').insert({user_id:st.userId,name:body.name,icon:body.icon||'📌',sort_order:body.sort_order||999,cat_group:body.cat_group||''}).then(function(){return{ok:true};});
+  }
+  // PUT /api/categories/:id
+  m=url.match(/^\/api\/categories\/(\d+)$/);
+  if(method==='PUT'&&m){
+    var cupd={};
+    ['name','icon','sort_order','cat_group'].forEach(function(f){if(body.hasOwnProperty(f))cupd[f]=body[f];});
+    return sb.from('categories').update(cupd).eq('id',parseInt(m[1])).then(function(){return{ok:true};});
+  }
+  // DELETE /api/categories/:id
+  m=url.match(/^\/api\/categories\/(\d+)$/);
+  if(method==='DELETE'&&m){
+    return sb.from('categories').delete().eq('id',parseInt(m[1])).then(function(){return{ok:true};});
+  }
+  // POST /api/categories/reorder
+  if(method==='POST'&&url==='/api/categories/reorder'){
+    var ids=body.ids||[];
+    var promises=ids.map(function(cid,i){return sb.from('categories').update({sort_order:i}).eq('id',cid);});
+    return Promise.all(promises).then(function(){return{ok:true};});
+  }
+  // POST /api/transfer
+  if(method==='POST'&&url==='/api/transfer'){
+    var tfAmt=Math.abs(body.amount);
+    var tfDate=body.date||'';
+    var tfNote=body.note||'';
+    return Promise.all([
+      sb.from('transactions').insert({user_id:st.userId,date:tfDate,name:'轉帳',category:'轉帳',amount:-tfAmt,note:tfNote,icon:'🔄',recurring:false,account_id:body.from_account_id}),
+      sb.from('transactions').insert({user_id:st.userId,date:tfDate,name:'轉帳',category:'轉帳',amount:tfAmt,note:tfNote,icon:'🔄',recurring:false,account_id:body.to_account_id})
+    ]).then(function(){
+      return Promise.all([
+        sb.from('accounts').select('balance').eq('id',body.from_account_id).single().then(function(r){
+          if(r.data) return sb.from('accounts').update({balance:r.data.balance-tfAmt}).eq('id',body.from_account_id);
+        }),
+        sb.from('accounts').select('balance').eq('id',body.to_account_id).single().then(function(r){
+          if(r.data) return sb.from('accounts').update({balance:r.data.balance+tfAmt}).eq('id',body.to_account_id);
+        })
+      ]);
+    }).then(function(){return{ok:true};});
+  }
+  // POST /api/loans/auto-pay (client-side implementation)
+  if(method==='POST'&&url==='/api/loans/auto-pay'){
+    return _clientAutoPayLoans();
+  }
+  // Fallback
+  console.warn('Unhandled api call:',method,url);
+  return Promise.resolve({});
+}
+
+// ── Client-side loan auto-pay ──
+function _clientAutoPayLoans(){
+  var today=new Date();
+  var todayStr=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
+  var monthStr=todayStr.slice(0,7);
+  var created=[];
+  var debtItems=data.debt.items.filter(function(it){return it.loan&&!it.loan.pledge_type&&it.loan.status!=='paid_off'&&it.loan.status!=='refinanced';});
+  var chain=Promise.resolve();
+  debtItems.forEach(function(it){
+    chain=chain.then(function(){
+      var ld=it.loan;
+      var payDay=ld.pay_day||1;
+      if(today.getDate()!==payDay) return;
+      var repayType=ld.repay_type||'本息平均攤還';
+      var isInt=repayType.indexOf('只繳利息')>=0;
+      // check if already paid this month
+      return sb.from('transactions').select('id',{count:'exact',head:true}).eq('account_id',it.id).like('date',monthStr+'%').in('category',['負債沖銷','財務費用']).then(function(res){
+        if((res.count||0)>0) return;
+        var principal=ld.principal||0,rate=ld.annual_rate||ld.interest_rate||0;
+        var totalMonths=ld.total_months||0,startDate=ld.start_date||'';
+        if(isInt){
+          var mi=Math.round(principal*rate/100/12*100)/100;
+          return sb.from('transactions').insert({user_id:st.userId,date:todayStr,name:it.name+' 利息',category:'財務費用',amount:-mi,note:'月利息（只繳利息）',icon:'💸',recurring:true,account_id:it.id}).then(function(){
+            created.push({account:it.name,period:0,principal:0,interest:mi});
+          });
+        }
+        if(!startDate)return;
+        var sd=new Date(startDate);
+        var monthsElapsed=(today.getFullYear()-sd.getFullYear())*12+(today.getMonth()-sd.getMonth());
+        var currentPeriod=monthsElapsed+1;
+        if(currentPeriod<1||currentPeriod>totalMonths)return;
+        var sched=levAmortSchedule(principal,rate,totalMonths,ld.pmt_override,repayType);
+        var entry=sched[currentPeriod-1];
+        return Promise.all([
+          sb.from('transactions').insert({user_id:st.userId,date:todayStr,name:it.name+' 本金',category:'負債沖銷',amount:entry.principal,note:'第'+currentPeriod+'期 本金',icon:'🏦',recurring:true,account_id:it.id}),
+          sb.from('transactions').insert({user_id:st.userId,date:todayStr,name:it.name+' 利息',category:'財務費用',amount:-entry.interest,note:'第'+currentPeriod+'期 利息',icon:'💸',recurring:true,account_id:it.id}),
+          sb.from('accounts').update({balance:it.bal+entry.principal,loan_data:Object.assign({},ld,{paid_periods:currentPeriod})}).eq('id',it.id)
+        ]).then(function(){
+          created.push({account:it.name,period:currentPeriod,principal:entry.principal,interest:entry.interest});
+        });
+      });
+    });
+  });
+  return chain.then(function(){return{ok:true,created:created};});
 }
 
 function loadAll(){
@@ -418,43 +684,41 @@ function loadAll(){
 }
 
 function loadAccounts(){
-  return api('GET','/api/accounts').then(function(res){
+  return sb.from('accounts').select('*').eq('user_id',st.userId).order('category').order('id').then(function(res){
     allAccounts=[];
-    ['liquid','invest','fixed','recv','debt'].forEach(function(k){
-      var items=(res[k]||[]).map(function(r){
-        var it={id:r.id,name:r.name,type:r.type,bal:r.balance,desc:r.description,dot:r.dot_color,stat:r.stat,group:r.group_name,category:k};
-        if(r.stock_data) it.sk=r.stock_data;
-        if(r.loan_data) it.loan=r.loan_data;
-        allAccounts.push(it);
-        return it;
-      });
-      data[k].items=items;
+    ['liquid','invest','fixed','recv','debt'].forEach(function(k){data[k].items=[];});
+    (res.data||[]).forEach(function(r){
+      var k=r.category;
+      var it={id:r.id,name:r.name,type:r.type,bal:r.balance,desc:r.description,dot:r.dot_color,stat:!!r.stat,group:r.group_name,category:k};
+      if(r.stock_data) it.sk=r.stock_data;
+      if(r.loan_data) it.loan=r.loan_data;
+      allAccounts.push(it);
+      if(data[k]) data[k].items.push(it);
     });
   });
 }
 
 function loadGroups(){
-  return api('GET','/api/groups').then(function(res){
-    ['liquid','invest','fixed','recv','debt'].forEach(function(k){
-      var gs={};
-      (res[k]||[]).forEach(function(name){gs[name]=true;});
-      data[k].groups=gs;
+  return sb.from('groups').select('*').eq('user_id',st.userId).order('category').order('name').then(function(res){
+    ['liquid','invest','fixed','recv','debt'].forEach(function(k){data[k].groups={};});
+    (res.data||[]).forEach(function(r){
+      if(data[r.category]) data[r.category].groups[r.name]=true;
     });
   });
 }
 
 function loadTx(){
   var prefix=st.curYear+'-'+MONTHS[st.curMonth];
-  return api('GET','/api/transactions?month='+prefix).then(function(res){
-    txs=res.map(function(r){
+  return sb.from('transactions').select('*').eq('user_id',st.userId).like('date',prefix+'%').order('date',{ascending:false}).order('id',{ascending:false}).then(function(res){
+    txs=(res.data||[]).map(function(r){
       return {id:r.id,date:r.date,name:r.name,cat:r.category,amt:r.amount,note:r.note||'',icon:r.icon||'',rec:!!r.recurring,account_id:r.account_id};
     });
   });
 }
 
 function loadCategories(){
-  return api('GET','/api/categories').then(function(res){
-    categories=res;
+  return sb.from('categories').select('*').eq('user_id',st.userId).order('sort_order').order('id').then(function(res){
+    categories=res.data||[];
   });
 }
 

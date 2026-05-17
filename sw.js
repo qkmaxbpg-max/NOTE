@@ -1,4 +1,4 @@
-var CACHE_NAME = 'fintrack-v4';
+var CACHE_NAME = 'fintrack-v5';
 var ASSETS = [
   './index.html',
   './style.css',
@@ -36,8 +36,8 @@ self.addEventListener('activate', function(e) {
 self.addEventListener('fetch', function(e) {
   var url = e.request.url;
 
-  // API calls: always go to network (no cache)
-  if (url.indexOf('/api/') !== -1) {
+  // API calls (Supabase, Yahoo Finance, CORS proxy): always go to network
+  if (url.indexOf('/api/') !== -1 || url.indexOf('supabase.co') !== -1 || url.indexOf('allorigins') !== -1 || url.indexOf('yahoo.com') !== -1) {
     e.respondWith(fetch(e.request));
     return;
   }
