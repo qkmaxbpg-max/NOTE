@@ -15,7 +15,7 @@
 <!-- PWA: common -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="style.css?v=10">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -223,6 +223,13 @@
           <div style="display:flex;flex-direction:column;gap:9px" id="sk-legend"></div>
         </div>
       </div>
+      <div class="sec-lbl">🇹🇼 台股</div>
+      <div class="sk-card" id="tw-stocks"></div>
+      <div class="sec-lbl">🇺🇸 美股</div>
+      <div class="sk-card" id="us-stocks"></div>
+      <div class="sec-lbl">📋 交易紀錄</div>
+      <div id="sk-tx-history" class="sk-card" style="padding:0"></div>
+      <div class="add-row" onclick="openModal('stock')"><svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>新增股票持倉</div>
       <div class="chart-wrap" style="margin-bottom:4px">
         <div class="chart-hd">
           <div><div class="ch-lbl">投資組合趨勢</div><div class="ch-val" id="sk-chart-ttl">—</div></div>
@@ -233,11 +240,6 @@
         </svg>
         <div class="chart-ax" id="sk-chart-ax"></div>
       </div>
-      <div class="sec-lbl">🇹🇼 台股</div>
-      <div class="sk-card" id="tw-stocks"></div>
-      <div class="sec-lbl">🇺🇸 美股</div>
-      <div class="sk-card" id="us-stocks"></div>
-      <div class="add-row" onclick="openModal('stock')"><svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>新增股票持倉</div>
       <div class="delay-note">報價延遲 15 分鐘 · Yahoo Finance</div>
     </div>
   </div>
@@ -560,28 +562,113 @@
     <div class="type-row">
       <button class="tbtn e" onclick="setTxType('e',this)">支出</button>
       <button class="tbtn" onclick="setTxType('i',this)">收入</button>
+      <button class="tbtn" onclick="setTxType('buy',this)">買股</button>
+      <button class="tbtn" onclick="setTxType('sell',this)">賣股</button>
       <button class="tbtn" onclick="setTxType('tf',this)">轉帳</button>
     </div>
-    <div class="field"><label>金額（NT$）</label><input type="number" id="f-amt" placeholder="0" inputmode="decimal" style="font-size:22px;font-family:var(--mono)"></div>
-    <div class="f2">
-      <div class="field"><label>日期</label><input type="date" id="f-date"></div>
-      <div class="field"><label>帳戶</label>
-        <div class="acct-pick-btn" id="f-acct-btn" onclick="openAcctPicker('f-acct')">選擇帳戶</div>
-        <input type="hidden" id="f-acct">
+    <div id="tx-normal-fields">
+      <div class="field"><label>金額（NT$）</label><input type="number" id="f-amt" placeholder="0" inputmode="decimal" style="font-size:22px;font-family:var(--mono)"></div>
+      <div class="f2">
+        <div class="field"><label>日期</label><input type="date" id="f-date"></div>
+        <div class="field"><label>帳戶</label>
+          <div class="acct-pick-btn" id="f-acct-btn" onclick="openAcctPicker('f-acct')">選擇帳戶</div>
+          <input type="hidden" id="f-acct">
+        </div>
       </div>
+      <div class="f2">
+        <div class="field"><label>類別</label>
+          <div class="acct-pick-btn" id="f-cat-btn" onclick="openCatPicker()">選擇類別</div>
+          <input type="hidden" id="f-cat">
+        </div>
+        <div class="field" style="display:flex;align-items:flex-end">
+          <button style="padding:12px;border-radius:var(--rs);border:1.5px solid var(--bg4);background:var(--bg2);color:var(--fg2);cursor:pointer;font-size:14px;margin-bottom:0" onclick="openModal('cat')">⚙</button>
+        </div>
+      </div>
+      <div class="field"><label>備註</label><input type="text" id="f-note" placeholder="選填備註..."></div>
+      <div class="rec-row"><span class="rec-lbl">定期排程</span><button class="tog" id="rec-tog" onclick="this.classList.toggle('on')"></button></div>
+      <button class="subbtn" onclick="submitTx()">新增記錄</button>
     </div>
-    <div class="f2">
-      <div class="field"><label>類別</label>
-        <div class="acct-pick-btn" id="f-cat-btn" onclick="openCatPicker()">選擇類別</div>
-        <input type="hidden" id="f-cat">
+    <div id="tx-buy-fields" style="display:none">
+      <div class="field">
+        <label>選擇股票</label>
+        <select id="tx-buy-stock" onchange="onTxBuyStockChange()" style="width:100%;padding:12px;border-radius:var(--rs);border:1.5px solid var(--bg4);background:var(--bg2);color:var(--fg0);font-size:14px">
+          <option value="">-- 選擇已持有或搜尋新股 --</option>
+        </select>
       </div>
-      <div class="field" style="display:flex;align-items:flex-end">
-        <button style="padding:12px;border-radius:var(--rs);border:1.5px solid var(--bg4);background:var(--bg2);color:var(--fg2);cursor:pointer;font-size:14px;margin-bottom:0" onclick="openModal('cat')">⚙</button>
+      <div id="tx-buy-search-wrap" style="display:none">
+        <div class="field" style="position:relative">
+          <label>搜尋股票</label>
+          <div class="sk-search-wrap">
+            <input type="text" id="tx-buy-search" placeholder="輸入代碼或名稱" autocomplete="off" oninput="onStockSearch(this.value,'txb')" style="padding-right:36px">
+            <button class="sk-search-clear" id="txb-search-clear" onclick="clearStockSelection('txb')">✕</button>
+          </div>
+          <div class="sk-search-results" id="txb-search-results"></div>
+        </div>
+        <div id="txb-stock-selected" style="display:none">
+          <div class="sk-selected-card" id="txb-selected-card"></div>
+          <input type="hidden" id="txb-ticker">
+          <input type="hidden" id="txb-isUs">
+        </div>
       </div>
+      <div class="f2">
+        <div class="field"><label>買入股數</label><input type="number" id="tx-buy-sh" placeholder="0" oninput="calcTxBuy()"></div>
+        <div class="field"><label>買入價格</label><input type="number" id="tx-buy-pr" placeholder="0.00" step="0.01" oninput="calcTxBuy()"></div>
+      </div>
+      <div class="field">
+        <label>實際付出</label>
+        <div class="paid-input-row">
+          <input type="number" id="tx-buy-paid" placeholder="0" oninput="calcTxBuy()" style="flex:1">
+          <div class="paid-ccy-tog" id="txb-paid-ccy-tog">
+            <button class="paid-ccy-btn on" onclick="setPaidCcy('txb','TWD')">NT$</button>
+            <button class="paid-ccy-btn" onclick="setPaidCcy('txb','USD')">US$</button>
+          </div>
+        </div>
+        <input type="hidden" id="txb-paid-ccy" value="TWD">
+      </div>
+      <div class="field">
+        <label>扣款帳戶</label>
+        <div class="acct-pick-btn" id="tx-buy-src-btn" onclick="openAcctPicker('tx-buy-src')">選擇扣款帳戶</div>
+        <input type="hidden" id="tx-buy-src-id">
+      </div>
+      <div class="field"><label>日期</label><input type="date" id="tx-buy-date"></div>
+      <button class="subbtn" onclick="submitTxBuy()">買入</button>
     </div>
-    <div class="field"><label>備註</label><input type="text" id="f-note" placeholder="選填備註..."></div>
-    <div class="rec-row"><span class="rec-lbl">定期排程</span><button class="tog" id="rec-tog" onclick="this.classList.toggle('on')"></button></div>
-    <button class="subbtn" onclick="submitTx()">新增記錄</button>
+    <div id="tx-sell-fields" style="display:none">
+      <div class="field">
+        <label>選擇持股</label>
+        <select id="tx-sell-stock" onchange="onTxSellStockChange()" style="width:100%;padding:12px;border-radius:var(--rs);border:1.5px solid var(--bg4);background:var(--bg2);color:var(--fg0);font-size:14px">
+          <option value="">-- 選擇要賣出的持股 --</option>
+        </select>
+      </div>
+      <div id="tx-sell-info" style="display:none;font-size:12px;color:var(--fg2);padding:8px 12px;background:var(--bg2);border-radius:8px;margin-bottom:8px"></div>
+      <div class="f2">
+        <div class="field"><label>賣出股數</label><input type="number" id="tx-sell-sh" placeholder="0" oninput="calcTxSell()"></div>
+        <div class="field"><label>賣出價格</label><input type="number" id="tx-sell-pr" placeholder="0.00" step="0.01" oninput="calcTxSell()"></div>
+      </div>
+      <div class="field">
+        <label>實際收到</label>
+        <div class="paid-input-row">
+          <input type="number" id="tx-sell-recv" placeholder="0" oninput="calcTxSell()" style="flex:1">
+          <div class="paid-ccy-tog" id="txs-paid-ccy-tog">
+            <button class="paid-ccy-btn on" onclick="setPaidCcy('txs','TWD')">NT$</button>
+            <button class="paid-ccy-btn" onclick="setPaidCcy('txs','USD')">US$</button>
+          </div>
+        </div>
+        <input type="hidden" id="txs-paid-ccy" value="TWD">
+      </div>
+      <div class="field">
+        <label>入帳帳戶</label>
+        <div class="acct-pick-btn" id="tx-sell-dest-btn" onclick="openAcctPicker('tx-sell-dest')">選擇入帳帳戶</div>
+        <input type="hidden" id="tx-sell-dest-id">
+      </div>
+      <div class="info-box" id="tx-sell-pnl" style="display:none">
+        <div class="info-row"><span class="info-lbl">賣出收益</span><span class="info-val" id="tx-sell-revenue">—</span></div>
+        <div class="info-row"><span class="info-lbl">買入成本</span><span class="info-val" id="tx-sell-cost">—</span></div>
+        <div class="info-row" style="border-top:1px solid var(--bg4);padding-top:8px;margin-top:4px"><span class="info-lbl" style="font-weight:600">損益</span><span class="info-val" id="tx-sell-gain">—</span></div>
+      </div>
+      <div class="field"><label>日期</label><input type="date" id="tx-sell-date"></div>
+      <button class="subbtn" onclick="submitTxSell()">賣出</button>
+    </div>
   </div>
 </div>
 
@@ -765,6 +852,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>

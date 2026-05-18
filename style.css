@@ -287,7 +287,8 @@ body.light .acct-add-btn:hover{background:rgba(0,0,0,.03)}
 .grp-pick-item.sel{border-color:var(--green);background:var(--gbg);color:var(--green)}
 .type-row{display:flex;gap:4px;background:var(--bg2);border-radius:var(--rs);padding:4px;margin-bottom:20px}
 .tbtn{flex:1;padding:9px;border:none;font-family:var(--font);font-size:13px;font-weight:500;border-radius:8px;cursor:pointer;background:transparent;color:var(--fg2)}
-.tbtn.e{background:var(--red);color:#fff}.tbtn.i{background:var(--green);color:#fff}.tbtn.tf{background:var(--blue);color:#fff}
+.tbtn.e{background:var(--red);color:#fff}.tbtn.i{background:var(--green);color:#fff}.tbtn.buy{background:var(--bbg);color:var(--blue);border-color:var(--bbord)}.tbtn.sell{background:var(--rbg);color:var(--red);border-color:var(--rbord)}.tbtn.tf{background:var(--blue);color:#fff}
+.type-row .tbtn{font-size:13px;padding:10px 0}
 .rec-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-top:1px solid var(--bg3);margin-top:2px}
 .rec-lbl{font-size:14px;color:var(--fg1)}
 
