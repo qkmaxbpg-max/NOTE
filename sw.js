@@ -1,4 +1,4 @@
-var CACHE_NAME = 'fintrack-v13';
+var CACHE_NAME = 'fintrack-v14';
 var ASSETS = [
   './index.html',
   './style.css',
@@ -18,7 +18,7 @@ self.addEventListener('install', function(e) {
   );
 });
 
-// Activate: clean old caches
+// Activate: clean old caches, take control immediately
 self.addEventListener('activate', function(e) {
   e.waitUntil(
     caches.keys().then(function(names) {
@@ -32,22 +32,42 @@ self.addEventListener('activate', function(e) {
   );
 });
 
-// Fetch: network-first for API, cache-first for assets
+// Fetch handler
 self.addEventListener('fetch', function(e) {
   var url = e.request.url;
 
-  // API calls (Supabase, Yahoo Finance, CORS proxy): always go to network
+  // API calls: always network
   if (url.indexOf('/api/') !== -1 || url.indexOf('supabase.co') !== -1 || url.indexOf('allorigins') !== -1 || url.indexOf('yahoo.com') !== -1) {
     e.respondWith(fetch(e.request));
     return;
   }
 
-  // Static assets: cache-first, fallback to network
+  // HTML, JS, CSS: network-first (so updates take effect immediately)
+  if (e.request.mode === 'navigate' || url.match(/\.(html|js|css)(\?|$)/)) {
+    e.respondWith(
+      fetch(e.request).then(function(response) {
+        if (response.ok) {
+          var clone = response.clone();
+          caches.open(CACHE_NAME).then(function(cache) {
+            cache.put(e.request, clone);
+          });
+        }
+        return response;
+      }).catch(function() {
+        return caches.match(e.request).then(function(cached) {
+          if (cached) return cached;
+          if (e.request.mode === 'navigate') return caches.match('./index.html');
+        });
+      })
+    );
+    return;
+  }
+
+  // Other assets (fonts, images): cache-first
   e.respondWith(
     caches.match(e.request).then(function(cached) {
       if (cached) return cached;
       return fetch(e.request).then(function(response) {
-        // cache successful GET responses
         if (response.ok && e.request.method === 'GET') {
           var clone = response.clone();
           caches.open(CACHE_NAME).then(function(cache) {
@@ -57,7 +77,6 @@ self.addEventListener('fetch', function(e) {
         return response;
       });
     }).catch(function() {
-      // offline fallback: return cached main page
       if (e.request.mode === 'navigate') {
         return caches.match('./index.html');
       }

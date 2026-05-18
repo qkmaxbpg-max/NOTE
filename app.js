@@ -971,7 +971,7 @@ function buildL3Card(key,it,idx){
   if(it.sk){
     var sk=it.sk;
     var curVal=Math.round(sk.shares*sk.curPrice*(sk.isUs?st.fxRate:1));
-    var paidTWD2=Math.round(sk.paid*(sk.isUs?st.fxRate:1));
+    var paidTWD2=Math.round((sk.paid||0)*(sk.isUs?st.fxRate:1));
     var gain=curVal-paidTWD2;
     var pct=paidTWD2>0?(gain/paidTWD2*100).toFixed(2):'0.00';
     chgHtml='<div class="a3-chg '+(gain>=0?'g':'r')+'">'+(gain>=0?'▲ +':'▼ ')+fmtN(cvt(Math.abs(gain)))+' ('+(gain>=0?'+':'')+pct+'%)</div>';
@@ -1850,8 +1850,8 @@ function renderStocks(){
   var totVal=all.reduce(function(s,it){return s+Math.round(it.sk.shares*it.sk.curPrice*(it.sk.isUs?st.fxRate:1));},0);
   $('sk-total').innerHTML=fmtN(cvt(totVal))+' <span style="font-size:13px;color:var(--fg2)">'+st.ccy+'</span>';
   // ── sk-chip：股票組合未實現損益 ──
-  var totGain=all.reduce(function(s,it){var cv=Math.round(it.sk.shares*it.sk.curPrice*(it.sk.isUs?st.fxRate:1));var pt=Math.round(it.sk.paid*(it.sk.isUs?st.fxRate:1));return s+(cv-pt);},0);
-  var totCost=all.reduce(function(s,it){return s+Math.round(it.sk.paid*(it.sk.isUs?st.fxRate:1));},0);
+  var totGain=all.reduce(function(s,it){var cv=Math.round(it.sk.shares*it.sk.curPrice*(it.sk.isUs?st.fxRate:1));var pt=Math.round((it.sk.paid||0)*(it.sk.isUs?st.fxRate:1));return s+(cv-pt);},0);
+  var totCost=all.reduce(function(s,it){return s+Math.round((it.sk.paid||0)*(it.sk.isUs?st.fxRate:1));},0);
   var skChipEl=$('sk-chip');
   if(skChipEl){
     if(!all.length||totCost===0){
@@ -1889,8 +1889,8 @@ function renderStocks(){
     // sk.paid and sk.fee are in native currency (USD for US stocks, TWD for TW stocks)
     // convert to TWD for consistent comparison
     var fxM=sk.isUs?st.fxRate:1;
-    var paidTWD=Math.round(sk.paid*fxM);
-    var feeTWD=Math.round(sk.fee*fxM);
+    var paidTWD=Math.round((sk.paid||0)*fxM);
+    var feeTWD=Math.round((sk.fee||0)*fxM);
     var gain=curVal-paidTWD;
     var pct=paidTWD>0?(gain/paidTWD*100).toFixed(2):'0.00';
     var rId='skr-'+uid,eId='ske-'+uid,isOpen=!!st.skPageOpen[eId];
@@ -1914,8 +1914,8 @@ function renderStocks(){
       +'<span class="sk-exp-val '+(gain>=0?'g':'r')+'">'+(gain>=0?'+':'')+fmtN(cvt(Math.abs(gain)))+' ('+(gain>=0?'+':'')+pct+'%)</span></div>'
       +'</div>';
   }
-  $('tw-stocks').innerHTML=tw.map(function(it,i){return skBlock(it,'tw'+i);}).join('')||'<div class="empty-note">尚未新增台股持倉</div>';
-  $('us-stocks').innerHTML=us.map(function(it,i){return skBlock(it,'us'+i);}).join('')||'<div class="empty-note">尚未新增美股持倉</div>';
+  $('tw-stocks').innerHTML=tw.map(function(it,i){try{return skBlock(it,'tw'+i);}catch(e){console.error('skBlock tw error',e,it);return '';}}).join('')||'<div class="empty-note">尚未新增台股持倉</div>';
+  $('us-stocks').innerHTML=us.map(function(it,i){try{return skBlock(it,'us'+i);}catch(e){console.error('skBlock us error',e,it);return '';}}).join('')||'<div class="empty-note">尚未新增美股持倉</div>';
   renderStockChart(skChartPeriod);
   // render stock transaction history
   renderSkTxHistory();
@@ -1945,19 +1945,21 @@ function renderSkTxHistory(){
   // Ensure wrapper structure exists (handles old cached HTML)
   var wrap=$('sktx-wrap');
   if(!wrap){
-    // Build wrapper dynamically from old sk-tx-history or create fresh
+    var stockPage=$('p-stocks');
+    if(!stockPage)return;
+    // Find or create insertion point before .add-row
+    var addRow=stockPage.querySelector('.add-row');
+    // Remove old-style sk-tx-history if present (from cached HTML)
     var oldEl=$('sk-tx-history');
-    var parent=oldEl?oldEl.parentNode:document.querySelector('#p-stocks .page-body');
-    if(!parent)return;
-    if(oldEl)parent.removeChild(oldEl);
-    // Also remove old sec-lbl if present
-    var prevSib=oldEl?null:null;
-    var labels=parent.querySelectorAll('.sec-lbl');
-    for(var li=0;li<labels.length;li++){if(labels[li].textContent.indexOf('交易紀錄')>=0)parent.removeChild(labels[li]);}
+    if(oldEl&&oldEl.parentNode)oldEl.parentNode.removeChild(oldEl);
+    // Remove old sec-lbl for 交易紀錄 if present
+    var allLabels=stockPage.querySelectorAll('.sec-lbl');
+    for(var li=allLabels.length-1;li>=0;li--){
+      if(allLabels[li].textContent.indexOf('交易紀錄')>=0)allLabels[li].parentNode.removeChild(allLabels[li]);
+    }
     wrap=document.createElement('div');
     wrap.className='sktx-wrap';wrap.id='sktx-wrap';
-    var addRow=parent.querySelector('.add-row');
-    if(addRow)parent.insertBefore(wrap,addRow);else parent.appendChild(wrap);
+    if(addRow)addRow.parentNode.insertBefore(wrap,addRow);else stockPage.appendChild(wrap);
     wrap.innerHTML='<div class="sktx-hd" onclick="toggleSkTx()">'
       +'<div class="sktx-hd-left"><span class="sktx-title">交易紀錄</span><span class="sktx-badge" id="sktx-badge">0</span></div>'
       +'<div class="sktx-hd-right">'
