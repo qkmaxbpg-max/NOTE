@@ -679,10 +679,11 @@ function api(method,url,body){
   m=url.match(/^\/api\/transactions\/(\d+)$/);
   if(method==='DELETE'&&m){
     var dtid=parseInt(m[1]);
+    var skipBalCats=['初始餘額','買入股票','賣出股票'];
     return sb.from('transactions').select('*').eq('id',dtid).single().then(function(oldRes){
       var old=oldRes.data;
       var balPromise=Promise.resolve();
-      if(old&&old.account_id){
+      if(old&&old.account_id&&skipBalCats.indexOf(old.category)===-1){
         balPromise=sb.from('accounts').select('balance').eq('id',old.account_id).single().then(function(r){
           if(r.data) return sb.from('accounts').update({balance:r.data.balance-old.amount}).eq('id',old.account_id);
         });
@@ -2073,21 +2074,21 @@ function renderSkTxHistory(){
     });
   }
 }
+var _skTxMerged=[];
 function _renderSkTxRows(el,badge,skTxs){
-  // Merge related stock transactions into single operations
   var merged=_mergeStockTxs(skTxs);
+  _skTxMerged=merged;
   if(badge)badge.textContent=merged.length;
   if(merged.length===0){
     el.innerHTML='<div class="sktx-empty">本月尚無交易紀錄</div>';
     return;
   }
-  // group by date
   var groups={},order=[];
   merged.forEach(function(t){
     if(!groups[t.date]){groups[t.date]=[];order.push(t.date);}
     groups[t.date].push(t);
   });
-  var html='';
+  var html='',mi=0;
   order.forEach(function(d){
     var dd=new Date(d);
     var days=['日','一','二','三','四','五','六'];
@@ -2107,6 +2108,7 @@ function _renderSkTxRows(el,badge,skTxs){
       var detail='';
       if(t.shares) detail+=t.shares+'股';
       if(t.srcName) detail+=(detail?'．':'')+t.srcName;
+      var delBtn=t.action!=='init'?'<button class="sktx-del" onclick="event.stopPropagation();delStockTx('+mi+')">✕</button>':'';
       html+='<div class="sktx-row">'
         +'<div class="sktx-ico" style="background:'+dot+';color:#fff">'+ticker.slice(0,3)+'</div>'
         +'<div class="sktx-info">'
@@ -2115,10 +2117,58 @@ function _renderSkTxRows(el,badge,skTxs){
         +(detail?'<span class="sktx-shares">'+detail+'</span>':'')
         +'</div>'
         +'<div class="sktx-amt '+amtCls+'">'+amtStr+'</div>'
+        +delBtn
         +'</div>';
+      mi++;
     });
   });
   el.innerHTML=html;
+}
+function delStockTx(mi){
+  var entry=_skTxMerged[mi];
+  if(!entry||!entry.txIds||!entry.txIds.length)return;
+  if(!confirm('確定刪除此筆'+( entry.action==='buy'?'買入':'賣出')+'紀錄？'))return;
+  var acct=allAccounts.find(function(a){return a.id===entry.stockAcctId;});
+  var delPromises=entry.txIds.map(function(tid){return api('DELETE','/api/transactions/'+tid);});
+  Promise.all(delPromises).then(function(){
+    if(!acct||!acct.sk) return;
+    var sk=acct.sk;
+    var sh=parseFloat(entry.shares)||0;
+    var noteMatch=(entry.action==='buy')?entry.ticker:'';
+    if(entry.action==='buy'){
+      var prMatch=entry.txIds.length>0?null:null;
+      // parse price from note: "ticker +shares股 @price"
+      return sb.from('transactions').select('note').eq('id',entry.txIds[0]).maybeSingle().then(function(){
+        // tx already deleted, parse from entry data
+        var newShares=sk.shares-sh;
+        if(newShares<=0){
+          return sb.from('accounts').delete().eq('id',acct.id);
+        }
+        var oldTotalCost=sk.shares*sk.avgPrice;
+        var removedCost=sh*sk.avgPrice;
+        var newAvg=newShares>0?(oldTotalCost-removedCost)/newShares:0;
+        var newPaid=sk.paid*(newShares/sk.shares);
+        var newFee=sk.fee*(newShares/sk.shares);
+        var isUs=sk.isUs;
+        var newMkt=isUs?Math.round(newShares*(sk.curPrice||sk.avgPrice)*st.fxRate):Math.round(newShares*(sk.curPrice||sk.avgPrice));
+        var uSk=Object.assign({},sk,{shares:newShares,avgPrice:Math.round(newAvg*1000)/1000,paid:newPaid,fee:newFee});
+        return sb.from('accounts').update({balance:newMkt,stock_data:uSk}).eq('id',acct.id);
+      });
+    }
+    if(entry.action==='sell'){
+      var newShares=sk.shares+sh;
+      var newPaid=sk.paid*(newShares/Math.max(sk.shares,1));
+      var newFee=sk.fee*(newShares/Math.max(sk.shares,1));
+      var isUs=sk.isUs;
+      var newMkt=isUs?Math.round(newShares*(sk.curPrice||sk.avgPrice)*st.fxRate):Math.round(newShares*(sk.curPrice||sk.avgPrice));
+      var uSk=Object.assign({},sk,{shares:newShares,paid:newPaid,fee:newFee});
+      return sb.from('accounts').update({balance:newMkt,stock_data:uSk}).eq('id',acct.id);
+    }
+  }).then(function(){
+    return Promise.all([loadAccounts(),loadTx()]);
+  }).then(function(){
+    renderOverview();renderStocks();renderTx();toast('已刪除');
+  });
 }
 function _mergeStockTxs(txList){
   // Group buy/sell pairs: "買入股票" on stock acct + "購入股票" on source acct → one entry
@@ -2161,7 +2211,7 @@ function _mergeStockTxs(txList){
           }
         });
       }
-      result.push({date:t.date,ticker:acct?acct.name:ticker,action:'init',shares:shares,totalAmt:Math.abs(t.amt),stockAcctId:t.account_id,srcName:srcName});
+      result.push({date:t.date,ticker:acct?acct.name:ticker,action:'init',shares:shares,totalAmt:Math.abs(t.amt),stockAcctId:t.account_id,srcName:srcName,txIds:[t.id]});
       return;
     }
     // 買入股票 - find paired 購入股票
@@ -2182,7 +2232,9 @@ function _mergeStockTxs(txList){
           }
         });
       }
-      result.push({date:t.date,ticker:acct?acct.name:ticker,action:'buy',shares:shares,totalAmt:Math.abs(t.amt),stockAcctId:t.account_id,srcName:srcName});
+      var buyTxIds=[t.id];
+      if(byDate[t.date]){byDate[t.date].forEach(function(o){if(used[o.i]&&o.i!==i&&o.t.cat==='購入股票')buyTxIds.push(o.t.id);});}
+      result.push({date:t.date,ticker:acct?acct.name:ticker,action:'buy',shares:shares,totalAmt:Math.abs(t.amt),stockAcctId:t.account_id,srcName:srcName,txIds:buyTxIds});
       return;
     }
     // 賣出股票 - find paired 賣股入帳
@@ -2202,7 +2254,9 @@ function _mergeStockTxs(txList){
           }
         });
       }
-      result.push({date:t.date,ticker:acct?acct.name:ticker,action:'sell',shares:shares,totalAmt:Math.abs(t.amt),stockAcctId:t.account_id,srcName:destName});
+      var sellTxIds=[t.id];
+      if(byDate[t.date]){byDate[t.date].forEach(function(o){if(used[o.i]&&o.i!==i&&o.t.cat==='賣股入帳')sellTxIds.push(o.t.id);});}
+      result.push({date:t.date,ticker:acct?acct.name:ticker,action:'sell',shares:shares,totalAmt:Math.abs(t.amt),stockAcctId:t.account_id,srcName:destName,txIds:sellTxIds});
       return;
     }
     // leftover unpaired entries (購入股票/賣股入帳 without match)
