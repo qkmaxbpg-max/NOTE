@@ -971,8 +971,9 @@ function buildL3Card(key,it,idx){
   if(it.sk){
     var sk=it.sk;
     var curVal=Math.round(sk.shares*sk.curPrice*(sk.isUs?st.fxRate:1));
-    var gain=curVal-sk.paid;
-    var pct=sk.paid>0?(gain/sk.paid*100).toFixed(2):'0.00';
+    var paidTWD2=Math.round(sk.paid*(sk.isUs?st.fxRate:1));
+    var gain=curVal-paidTWD2;
+    var pct=paidTWD2>0?(gain/paidTWD2*100).toFixed(2):'0.00';
     chgHtml='<div class="a3-chg '+(gain>=0?'g':'r')+'">'+(gain>=0?'▲ +':'▼ ')+fmtN(cvt(Math.abs(gain)))+' ('+(gain>=0?'+':'')+pct+'%)</div>';
     valStr=fmtAmt(cvt(curVal));
   }
@@ -1849,8 +1850,8 @@ function renderStocks(){
   var totVal=all.reduce(function(s,it){return s+Math.round(it.sk.shares*it.sk.curPrice*(it.sk.isUs?st.fxRate:1));},0);
   $('sk-total').innerHTML=fmtN(cvt(totVal))+' <span style="font-size:13px;color:var(--fg2)">'+st.ccy+'</span>';
   // ── sk-chip：股票組合未實現損益 ──
-  var totGain=all.reduce(function(s,it){var cv=Math.round(it.sk.shares*it.sk.curPrice*(it.sk.isUs?st.fxRate:1));return s+(cv-it.sk.paid);},0);
-  var totCost=all.reduce(function(s,it){return s+it.sk.paid;},0);
+  var totGain=all.reduce(function(s,it){var cv=Math.round(it.sk.shares*it.sk.curPrice*(it.sk.isUs?st.fxRate:1));var pt=Math.round(it.sk.paid*(it.sk.isUs?st.fxRate:1));return s+(cv-pt);},0);
+  var totCost=all.reduce(function(s,it){return s+Math.round(it.sk.paid*(it.sk.isUs?st.fxRate:1));},0);
   var skChipEl=$('sk-chip');
   if(skChipEl){
     if(!all.length||totCost===0){
@@ -1882,9 +1883,19 @@ function renderStocks(){
       +'<span style="font-family:var(--mono);font-size:13px;color:var(--fg2)">'+pct+'%</span></div>';
   }).join('');
   function skBlock(it,uid){
-    var sk=it.sk,curVal=Math.round(sk.shares*sk.curPrice*(sk.isUs?st.fxRate:1));
-    var gain=curVal-sk.paid,pct=sk.paid>0?(gain/sk.paid*100).toFixed(2):'0.00';
+    var sk=it.sk;
+    // curVal in TWD
+    var curVal=Math.round(sk.shares*sk.curPrice*(sk.isUs?st.fxRate:1));
+    // sk.paid and sk.fee are in native currency (USD for US stocks, TWD for TW stocks)
+    // convert to TWD for consistent comparison
+    var fxM=sk.isUs?st.fxRate:1;
+    var paidTWD=Math.round(sk.paid*fxM);
+    var feeTWD=Math.round(sk.fee*fxM);
+    var gain=curVal-paidTWD;
+    var pct=paidTWD>0?(gain/paidTWD*100).toFixed(2):'0.00';
     var rId='skr-'+uid,eId='ske-'+uid,isOpen=!!st.skPageOpen[eId];
+    // native currency label for avgPrice / curPrice
+    var nSym=sk.isUs?'US$':'NT$';
     return '<div class="sk-row'+(isOpen?' open-row':'')+'" id="'+rId+'" onclick="toggleSk(\''+rId+'\',\''+eId+'\')">'
       +'<div class="sk-ico" style="background:'+it.dot+';font-size:'+(it.name.length>3?'10px':'12px')+'">'+it.name+'</div>'
       +'<div class="sk-info"><div class="sk-nm">'+it.name+(sk.leverage&&sk.leverage!==1?' <span class="lev-badge" style="font-size:10px;vertical-align:middle">'+sk.leverage+'x</span>':'')+'</div><div class="sk-desc">'+it.desc+'</div></div>'
@@ -1893,14 +1904,14 @@ function renderStocks(){
       +'<div class="sk-chev"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></div></div>'
       +'<div class="sk-expand'+(isOpen?' open':'')+'" id="'+eId+'">'
       +'<div class="sk-exp-row"><span class="sk-exp-lbl">持有股數</span><span class="sk-exp-val">'+sk.shares+'</span></div>'
-      +'<div class="sk-exp-row"><span class="sk-exp-lbl">買入均價</span><span class="sk-exp-val">'+sk.avgPrice+'</span></div>'
-      +'<div class="sk-exp-row"><span class="sk-exp-lbl">現價</span><span class="sk-exp-val">'+sk.curPrice+'</span></div>'
+      +'<div class="sk-exp-row"><span class="sk-exp-lbl">買入均價</span><span class="sk-exp-val">'+nSym+' '+sk.avgPrice+'</span></div>'
+      +'<div class="sk-exp-row"><span class="sk-exp-lbl">現價</span><span class="sk-exp-val">'+nSym+' '+sk.curPrice+'</span></div>'
       +(sk.leverage&&sk.leverage!==1?'<div class="sk-exp-row"><span class="sk-exp-lbl">槓桿倍數</span><span class="sk-exp-val" style="color:var(--green)">'+sk.leverage+'x</span></div>':'')
-      +'<div class="sk-exp-row"><span class="sk-exp-lbl">其中手續費</span><span class="sk-exp-val r">'+ccySym()+' '+fmtN(cvt(sk.fee))+'</span></div>'
-      +'<div class="sk-exp-row"><span class="sk-exp-lbl">實際總成本</span><span class="sk-exp-val">'+ccySym()+' '+fmtN(cvt(sk.paid))+'</span></div>'
+      +'<div class="sk-exp-row"><span class="sk-exp-lbl">其中手續費</span><span class="sk-exp-val r">'+ccySym()+' '+fmtN(cvt(feeTWD))+'</span></div>'
+      +'<div class="sk-exp-row"><span class="sk-exp-lbl">實際總成本</span><span class="sk-exp-val">'+ccySym()+' '+fmtN(cvt(paidTWD))+'</span></div>'
       +'<div class="sk-exp-row"><span class="sk-exp-lbl">現值</span><span class="sk-exp-val">'+ccySym()+' '+fmtN(cvt(curVal))+'</span></div>'
       +'<div class="sk-exp-row"><span class="sk-exp-lbl">未實現損益</span>'
-      +'<span class="sk-exp-val '+(gain>=0?'g':'r')+'">'+(gain>=0?'+':'')+cvt(gain).toLocaleString()+' ('+(gain>=0?'+':'')+pct+'%)</span></div>'
+      +'<span class="sk-exp-val '+(gain>=0?'g':'r')+'">'+(gain>=0?'+':'')+fmtN(cvt(Math.abs(gain)))+' ('+(gain>=0?'+':'')+pct+'%)</span></div>'
       +'</div>';
   }
   $('tw-stocks').innerHTML=tw.map(function(it,i){return skBlock(it,'tw'+i);}).join('')||'<div class="empty-note">尚未新增台股持倉</div>';
@@ -1920,9 +1931,8 @@ function toggleSk(rId,eId){
 /* ── Stock Transaction History (compact list) ── */
 function toggleSkTx(){
   st.skTxOpen=!st.skTxOpen;
-  var hd=$('sktx-hd'),bd=$('sk-tx-history'),ch=$('sktx-chev');
-  if(hd)hd.classList.toggle('open',st.skTxOpen);
-  if(bd)bd.classList.toggle('open',st.skTxOpen);
+  var wrap=$('sktx-wrap');
+  if(wrap)wrap.classList.toggle('open',st.skTxOpen);
 }
 function navSkTxMonth(dir){
   if(st.skTxMonth===null){st.skTxMonth=st.curMonth;st.skTxYear=st.curYear;}
@@ -1932,14 +1942,13 @@ function navSkTxMonth(dir){
   renderSkTxHistory();
 }
 function renderSkTxHistory(){
-  var el=$('sk-tx-history'),hd=$('sktx-hd'),badge=$('sktx-badge'),monthEl=$('sktx-month');
+  var el=$('sk-tx-history'),wrap=$('sktx-wrap'),badge=$('sktx-badge'),monthEl=$('sktx-month');
   if(!el)return;
   var m=st.skTxMonth!==null?st.skTxMonth:st.curMonth;
   var y=st.skTxYear!==null?st.skTxYear:st.curYear;
   if(monthEl)monthEl.textContent=(m+1)+'月';
   // re-apply open state
-  if(hd)hd.classList.toggle('open',!!st.skTxOpen);
-  el.classList.toggle('open',!!st.skTxOpen);
+  if(wrap)wrap.classList.toggle('open',!!st.skTxOpen);
 
   var prefix=y+'-'+MONTHS[m];
   var stockTxCats=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
@@ -3664,7 +3673,7 @@ function renderLevSummary(){
     var stocks=getStocksByFund(l.id);
     stocks.forEach(function(s){
       creditAssetVal+=Math.abs(s.bal);
-      creditCost+=s.sk.paid;
+      creditCost+=Math.round(s.sk.paid*(s.sk.isUs?st.fxRate:1));
     });
     creditDebt+=Math.abs(l.bal);
   });
@@ -3753,7 +3762,7 @@ function renderCreditAnalysis(){
     var stockMktVal=0,stockCost=0;
     stocks.forEach(function(s){
       stockMktVal+=Math.abs(s.bal);
-      stockCost+=s.sk.paid;
+      stockCost+=Math.round(s.sk.paid*(s.sk.isUs?st.fxRate:1));
     });
     totalMarketVal+=stockMktVal;
     totalCost+=stockCost;
@@ -3797,9 +3806,10 @@ function renderCreditAnalysis(){
     if(stocks.length){
       html+='<div class="lev-section-lbl">📈 信貸投資標的</div>';
       stocks.forEach(function(s){
-        var mkt=s.sk.shares*s.sk.curPrice;
-        var sp=mkt-s.sk.paid;
-        var spPct=s.sk.paid>0?(sp/s.sk.paid*100):0;
+        var mkt=s.sk.shares*s.sk.curPrice*(s.sk.isUs?st.fxRate:1);
+        var sPaidTWD=s.sk.paid*(s.sk.isUs?st.fxRate:1);
+        var sp=mkt-sPaidTWD;
+        var spPct=sPaidTWD>0?(sp/sPaidTWD*100):0;
         html+='<div class="lev-stock-row">';
         html+='<div class="lev-stock-dot" style="background:'+s.dot+'33;color:'+s.dot+'">'+s.name.charAt(0)+'</div>';
         html+='<div class="lev-stock-info"><div class="lev-stock-name">'+s.name+'</div>';

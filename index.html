@@ -15,7 +15,7 @@
 <!-- PWA: common -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=11">
+<link rel="stylesheet" href="style.css?v=12">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -227,16 +227,18 @@
       <div class="sk-card" id="tw-stocks"></div>
       <div class="sec-lbl">🇺🇸 美股</div>
       <div class="sk-card" id="us-stocks"></div>
-      <div class="sktx-hd" id="sktx-hd" onclick="toggleSkTx()">
-        <div class="sktx-hd-left"><span class="sktx-title">交易紀錄</span><span class="sktx-badge" id="sktx-badge">0</span></div>
-        <div class="sktx-hd-right">
-          <button class="sktx-arrow" onclick="event.stopPropagation();navSkTxMonth(-1)">‹</button>
-          <span class="sktx-month" id="sktx-month">5月</span>
-          <button class="sktx-arrow" onclick="event.stopPropagation();navSkTxMonth(1)">›</button>
-          <svg class="sktx-chev" id="sktx-chev" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 6 8 10 12 6"/></svg>
+      <div class="sktx-wrap" id="sktx-wrap">
+        <div class="sktx-hd" onclick="toggleSkTx()">
+          <div class="sktx-hd-left"><span class="sktx-title">交易紀錄</span><span class="sktx-badge" id="sktx-badge">0</span></div>
+          <div class="sktx-hd-right">
+            <button class="sktx-arrow" onclick="event.stopPropagation();navSkTxMonth(-1)">‹</button>
+            <span class="sktx-month" id="sktx-month">5月</span>
+            <button class="sktx-arrow" onclick="event.stopPropagation();navSkTxMonth(1)">›</button>
+            <svg class="sktx-chev" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 6 8 10 12 6"/></svg>
+          </div>
         </div>
+        <div id="sk-tx-history" class="sktx-body"></div>
       </div>
-      <div id="sk-tx-history" class="sktx-body"></div>
       <div class="add-row" onclick="openModal('stock')"><svg viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></svg>新增股票持倉</div>
       <div class="chart-wrap" style="margin-bottom:4px">
         <div class="chart-hd">
@@ -860,6 +862,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=11"></script>
+<script src="app.js?v=12"></script>
 </body>
 </html>
