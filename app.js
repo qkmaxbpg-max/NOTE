@@ -1518,10 +1518,12 @@ function submitAddAcct(){
     var promises=[];
     // auto transaction: initial balance
     if(finalBal!==0&&newId){
+      var initNote=name;
+      if(type==='股票'){var _addTk=payload.stock_data?payload.stock_data.ticker:name;var _addSh=payload.stock_data?payload.stock_data.shares:0;initNote=_addTk+' +'+_addSh+'股 @'+(payload.stock_data?payload.stock_data.avgPrice:0);}
       promises.push(api('POST','/api/transactions',{
         date:new Date().toISOString().slice(0,10),
         name:'初始餘額',category:'初始餘額',amount:finalBal,
-        note:name,icon:'📥',recurring:false,account_id:newId
+        note:initNote,icon:'📥',recurring:false,account_id:newId
       }));
     }
     // stock purchase: deduct from source account
@@ -1530,10 +1532,11 @@ function submitAddAcct(){
       if(srcAcct){
         var newSrcBal=srcAcct.bal-Math.round(_paidTWD);
         promises.push(sb.from('accounts').update({balance:newSrcBal}).eq('id',_skSrcId));
+        var _srcTkNote=payload.stock_data?payload.stock_data.ticker:name;
         promises.push(api('POST','/api/transactions',{
           date:new Date().toISOString().slice(0,10),
           name:'購入股票',category:'購入股票',amount:-Math.round(_paidTWD),
-          note:name,icon:'📈',recurring:false,account_id:_skSrcId
+          note:_srcTkNote,icon:'📈',recurring:false,account_id:_skSrcId
         }));
       }
     }
@@ -2082,22 +2085,36 @@ function _mergeStockTxs(txList){
   });
   txList.forEach(function(t,i){
     if(used[i])return;
-    // 初始餘額 (init) - standalone, show as 建倉
+    // 初始餘額 (init) - show as 建倉 with shares & source account
     if(t.cat==='初始餘額'){
       used[i]=true;
       var ticker=_extractTicker(t);
       var acct=allAccounts.find(function(a){return a.id===t.account_id;});
+      // check if this is a stock account init
+      var isStockInit=acct&&acct.sk;
+      if(!isStockInit){
+        // non-stock 初始餘額 - skip from stock tx list
+        return;
+      }
       var shares='';
-      if(t.note){var sm=t.note.match(/([\d.]+)\s*股/);if(sm)shares=sm[1];}
-      result.push({date:t.date,ticker:acct?acct.name:ticker,action:'init',shares:shares,totalAmt:Math.abs(t.amt),stockAcctId:t.account_id,srcName:''});
-      // Mark paired "購入股票" on same date with same ticker
+      if(t.note){var sm=t.note.match(/\+?([\d.]+)\s*股/);if(sm)shares=sm[1];}
+      // fallback: get shares from current stock data if note doesn't have it
+      if(!shares&&acct&&acct.sk)shares=String(acct.sk.shares);
+      var srcName='';
+      // Mark paired "購入股票" on same date and extract source account
       if(byDate[t.date]){
         byDate[t.date].forEach(function(o){
-          if(o.i!==i&&!used[o.i]&&o.t.cat==='購入股票'&&_extractTicker(o.t)===ticker){
-            used[o.i]=true;
+          if(o.i!==i&&!used[o.i]&&o.t.cat==='購入股票'){
+            var oTk=_extractTicker(o.t);
+            if(oTk===ticker||(acct&&oTk===acct.name)){
+              used[o.i]=true;
+              var sa=allAccounts.find(function(a){return a.id===o.t.account_id;});
+              if(sa)srcName=sa.name;
+            }
           }
         });
       }
+      result.push({date:t.date,ticker:acct?acct.name:ticker,action:'init',shares:shares,totalAmt:Math.abs(t.amt),stockAcctId:t.account_id,srcName:srcName});
       return;
     }
     // 買入股票 - find paired 購入股票
@@ -2151,8 +2168,11 @@ function _mergeStockTxs(txList){
   return result;
 }
 function _extractTicker(t){
-  if(t.note){var m=t.note.match(/^([A-Z0-9]+)/);if(m)return m[1];}
-  return t.name||'';
+  if(t.note){
+    var m=t.note.match(/^([A-Za-z0-9]+)/);
+    if(m)return m[1].toUpperCase();
+  }
+  return (t.name||'').toUpperCase();
 }
 
 function calcSkFee(){
@@ -2256,7 +2276,7 @@ function submitStock(){
       promises.push(api('POST','/api/transactions',{
         date:new Date().toISOString().slice(0,10),
         name:'初始餘額',category:'初始餘額',amount:mktVal,
-        note:tk,icon:'📥',recurring:false,account_id:newId
+        note:tk+' +'+sh+'股 @'+pr,icon:'📥',recurring:false,account_id:newId
       }));
     }
     if(skSrcId&&newId&&paidTWD){
@@ -2306,12 +2326,14 @@ function renderTx(){
   var stockBuyCats=['買入股票','初始餘額'];
   txs.forEach(function(t,i){
     if(stockBuyCats.indexOf(t.cat)>=0&&!skipIdx[i]){
-      var ticker=t.note?t.note.match(/^([A-Z0-9]+)/):null;
-      var tkr=ticker?ticker[1]:'';
+      var ticker=t.note?(t.note.match(/^([A-Za-z0-9]+)/)||[])[1]:'';
+      if(ticker) ticker=ticker.toUpperCase();
+      var acctName=getAcctName(t.account_id).toUpperCase();
       for(var j=0;j<txs.length;j++){
         if(j!==i&&!skipIdx[j]&&txs[j].cat==='購入股票'&&txs[j].date===t.date){
-          var tkr2=txs[j].note?txs[j].note.match(/^([A-Z0-9]+)/):null;
-          if(tkr&&tkr2&&tkr===tkr2[1]){
+          var tkr2=txs[j].note?(txs[j].note.match(/^([A-Za-z0-9]+)/)||[])[1]:'';
+          if(tkr2) tkr2=tkr2.toUpperCase();
+          if((ticker&&tkr2&&ticker===tkr2)||(acctName&&tkr2&&acctName===tkr2)){
             t._stockSrc=txs[j].account_id;
             t._stockSrcAmt=txs[j].amt;
             skipIdx[j]=true;
@@ -2324,12 +2346,14 @@ function renderTx(){
   // Pair stock sell transactions: 賣出股票 on stock acct + 賣股入帳 on dest acct
   txs.forEach(function(t,i){
     if(t.cat==='賣出股票'&&!skipIdx[i]){
-      var ticker=t.note?t.note.match(/^([A-Z0-9]+)/):null;
-      var tkr=ticker?ticker[1]:'';
+      var ticker=t.note?(t.note.match(/^([A-Za-z0-9]+)/)||[])[1]:'';
+      if(ticker) ticker=ticker.toUpperCase();
+      var acctName=getAcctName(t.account_id).toUpperCase();
       for(var j=0;j<txs.length;j++){
         if(j!==i&&!skipIdx[j]&&txs[j].cat==='賣股入帳'&&txs[j].date===t.date){
-          var tkr2=txs[j].note?txs[j].note.match(/^([A-Z0-9]+)/):null;
-          if(tkr&&tkr2&&tkr===tkr2[1]){
+          var tkr2=txs[j].note?(txs[j].note.match(/^([A-Za-z0-9]+)/)||[])[1]:'';
+          if(tkr2) tkr2=tkr2.toUpperCase();
+          if((ticker&&tkr2&&ticker===tkr2)||(acctName&&tkr2&&acctName===tkr2)){
             t._stockDest=txs[j].account_id;
             t._stockDestAmt=txs[j].amt;
             skipIdx[j]=true;
