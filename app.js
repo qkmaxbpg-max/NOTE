@@ -1476,7 +1476,9 @@ function submitAddAcct(){
     if(cpEl&&cpEl._livePrice) curPrice=cpEl._livePrice;
     var fee=paidNative-(sh*pr);
     var addFundSrc=parseInt($('add-fund-source').value)||null;
-    payload.stock_data={ticker:$('add-ticker').value.trim().toUpperCase()||name,shares:sh,avgPrice:pr,paid:paidNative,curPrice:curPrice,fee:fee,isUs:isUs,leverage:addLev,paidCcy:paidCcy,paidOriginal:paid,fundSource:addFundSrc};
+    var _newSkData={ticker:$('add-ticker').value.trim().toUpperCase()||name,shares:sh,avgPrice:pr,paid:paidNative,curPrice:curPrice,fee:fee,isUs:isUs,leverage:addLev,paidCcy:paidCcy,paidOriginal:paid,fundSources:{}};
+    if(addFundSrc) _newSkData.fundSources[addFundSrc]={shares:sh,paid:paidNative};
+    payload.stock_data=_newSkData;
     // store source account for deduction
     var addSkSrcId=parseInt($('add-sk-src-id').value)||0;
     if(addSkSrcId) payload._skSrcId=addSkSrcId;
@@ -1493,7 +1495,7 @@ function submitAddAcct(){
       var nCur=curPrice;
       var nMkt=isUs?Math.round(tShares*nCur*st.fxRate):Math.round(tShares*nCur);
       var uSk=Object.assign({},osk,{shares:tShares,avgPrice:Math.round(nAvg*1000)/1000,paid:nPaid,fee:nFee,curPrice:nCur});
-      if(addFundSrc) uSk.fundSource=addFundSrc;
+      if(addFundSrc) _addFundSource(uSk,addFundSrc,sh,paidNative);
       var addPaidTWD=payload._paidTWD;
       var addSkSrcId2=payload._skSrcId;
       sb.from('accounts').update({balance:nMkt,stock_data:uSk}).eq('id',existingAdd.id).then(function(){
@@ -1657,7 +1659,7 @@ function openEditAcct(key,idx){
   }
   // stock fund source
   $('edit-fund-section').style.display=isStock?'block':'none';
-  if(isStock){populateFundSourceSelect('edit-fund-source',it.sk.fundSource||null);}
+  if(isStock){var _efs=_getFundSources(it.sk);var _efk=Object.keys(_efs);populateFundSourceSelect('edit-fund-source',_efk.length?parseInt(_efk[0]):null);}
   // stock leverage section
   $('edit-lev-section').style.display=isStock?'block':'none';
   if(isStock) $('edit-leverage').value=String(it.sk.leverage||1);
@@ -1780,7 +1782,9 @@ function submitEdit(){
     var eCurPrice=it.sk.curPrice||ePr;
     var eIsUs=it.sk.isUs;
     var editFundSrc=parseInt($('edit-fund-source').value)||null;
-    payload.stock_data=Object.assign({},it.sk,{leverage:newLev,shares:eSh,avgPrice:ePr,paid:ePaid,fee:eFee,fundSource:editFundSrc});
+    var _editSk=Object.assign({},it.sk,{leverage:newLev,shares:eSh,avgPrice:ePr,paid:ePaid,fee:eFee});
+    if(!_editSk.fundSources) _editSk.fundSources=Object.assign({},_getFundSources(it.sk));
+    payload.stock_data=_editSk;
     // auto-calculate balance as market value
     if(eIsUs){
       newBal=Math.round(eSh*eCurPrice*st.fxRate);
@@ -2335,7 +2339,7 @@ function submitStock(){
     var newMktVal=isUs?Math.round(totalShares*curPrice*st.fxRate):Math.round(totalShares*curPrice);
     var sFundSrc=parseInt($('s-fund-source').value)||null;
     var updatedSk=Object.assign({},oldSk,{shares:totalShares,avgPrice:Math.round(newAvg*1000)/1000,paid:newPaid,fee:newFee,curPrice:curPrice});
-    if(sFundSrc) updatedSk.fundSource=sFundSrc;
+    if(sFundSrc) _addFundSource(updatedSk,sFundSrc,sh,paidNative);
     sb.from('accounts').update({balance:newMktVal,stock_data:updatedSk}).eq('id',existing.id).then(function(){
       existing.sk=updatedSk;existing.bal=newMktVal;
       var promises=[];
@@ -2370,7 +2374,7 @@ function submitStock(){
 
   api('POST','/api/accounts',{
     category:'invest',name:tk,type:'股票',balance:mktVal,description:nm,dot_color:dot,stat:true,
-    stock_data:{ticker:tk,shares:sh,avgPrice:pr,paid:paidNative,curPrice:curPrice,fee:fee,isUs:isUs,leverage:parseInt($('s-leverage').value)||1,paidCcy:paidCcy,paidOriginal:paid,fundSource:parseInt($('s-fund-source').value)||null}
+    stock_data:(function(){var _fs={},_fl=parseInt($('s-fund-source').value)||null;var sd={ticker:tk,shares:sh,avgPrice:pr,paid:paidNative,curPrice:curPrice,fee:fee,isUs:isUs,leverage:parseInt($('s-leverage').value)||1,paidCcy:paidCcy,paidOriginal:paid,fundSources:_fs};if(_fl)_fs[_fl]={shares:sh,paid:paidNative};return sd;})()
   }).then(function(newAcct){
     var newId=newAcct?newAcct.id:null;
     var promises=[];
@@ -2811,7 +2815,7 @@ function onTxBuyStockChange(){
     var it=allAccounts.find(function(a){return a.id===parseInt(v);});
     if(it&&it.sk){
       $('tx-buy-pr').value=it.sk.curPrice||it.sk.avgPrice;
-      populateFundSourceSelect('txb-fund-source',it.sk.fundSource||null);
+      var _tbfs=_getFundSources(it.sk);var _tbfk=Object.keys(_tbfs);populateFundSourceSelect('txb-fund-source',_tbfk.length?parseInt(_tbfk[0]):null);
     }
   }
 }
@@ -2860,7 +2864,7 @@ function submitTxBuy(){
     curPrice=osk.curPrice||pr;
     var nMkt=isUs?Math.round(tShares*curPrice*st.fxRate):Math.round(tShares*curPrice);
     var uSk=Object.assign({},osk,{shares:tShares,avgPrice:Math.round(nAvg*1000)/1000,paid:nPaid,fee:nFee});
-    if(txbFundSrc) uSk.fundSource=txbFundSrc;
+    if(txbFundSrc) _addFundSource(uSk,txbFundSrc,sh,paidNative);
     var promises=[];
     promises.push(sb.from('accounts').update({balance:nMkt,stock_data:uSk}).eq('id',existing.id));
     promises.push(api('POST','/api/transactions',{
@@ -2883,7 +2887,7 @@ function submitTxBuy(){
     var dot=DOTS[data.invest.items.length%DOTS.length];
     api('POST','/api/accounts',{
       category:'invest',name:tk,type:'股票',balance:mktVal,description:tk,dot_color:dot,stat:true,
-      stock_data:{ticker:tk,shares:sh,avgPrice:pr,paid:paidNative,curPrice:curPrice,fee:fee,isUs:isUs,leverage:1,fundSource:txbFundSrc}
+      stock_data:(function(){var sd={ticker:tk,shares:sh,avgPrice:pr,paid:paidNative,curPrice:curPrice,fee:fee,isUs:isUs,leverage:1,fundSources:{}};if(txbFundSrc)sd.fundSources[txbFundSrc]={shares:sh,paid:paidNative};return sd;})()
     }).then(function(newAcct){
       var newId=newAcct?newAcct.id:null;
       var promises=[];
@@ -2931,7 +2935,7 @@ function onTxSellStockChange(){
     $('tx-sell-info').innerHTML='持有 <b>'+it.sk.shares+'</b> 股 · 均價 <b>'+it.sk.avgPrice+'</b> · 現價 <b>'+it.sk.curPrice+'</b>';
     $('tx-sell-info').style.display='block';
     $('tx-sell-pr').value=it.sk.curPrice||'';
-    populateFundSourceSelect('txs-fund-source',it.sk.fundSource||null);
+    var _tsfs=_getFundSources(it.sk);var _tsfk=Object.keys(_tsfs);populateFundSourceSelect('txs-fund-source',_tsfk.length?parseInt(_tsfk[0]):null);
   }
 }
 function calcTxSell(){
@@ -2980,8 +2984,8 @@ function submitTxSell(){
   var remainFee=remainShares>0?osk.fee*(remainShares/osk.shares):0;
   var curPrice=osk.curPrice||pr;
   var newMkt=remainShares>0?(isUs?Math.round(remainShares*curPrice*st.fxRate):Math.round(remainShares*curPrice)):0;
-  var txsFundSrc=parseInt($('txs-fund-source').value)||null;
-  var uSk=Object.assign({},osk,{shares:remainShares,paid:remainPaid,fee:remainFee,fundSource:txsFundSrc});
+  var uSk=Object.assign({},osk,{shares:remainShares,paid:remainPaid,fee:remainFee});
+  _reduceFundSources(uSk,sh);
 
   var promises=[];
   if(remainShares>0){
@@ -3984,13 +3988,51 @@ function populateFundSourceSelect(selId,currentVal){
     sel.appendChild(opt);
   });
 }
+function _getFundSources(sk){
+  if(sk.fundSources) return sk.fundSources;
+  if(sk.fundSource){var o={};o[sk.fundSource]={shares:sk.shares,paid:sk.paid};return o;}
+  return {};
+}
+function _addFundSource(sk,loanId,shares,paid){
+  if(!sk.fundSources) sk.fundSources=Object.assign({},_getFundSources(sk));
+  var fs=sk.fundSources;
+  if(!fs[loanId]) fs[loanId]={shares:0,paid:0};
+  fs[loanId].shares+=shares;
+  fs[loanId].paid+=paid;
+}
+function _reduceFundSources(sk,soldShares){
+  var fs=_getFundSources(sk);
+  var keys=Object.keys(fs);
+  if(!keys.length) return;
+  if(!sk.fundSources) sk.fundSources=Object.assign({},fs);
+  var totalShares=sk.shares;
+  var ratio=totalShares>0?soldShares/totalShares:0;
+  keys.forEach(function(lid){
+    var f=sk.fundSources[lid];
+    var removeSh=f.shares*ratio;
+    var removePaid=f.paid*ratio;
+    f.shares=Math.max(0,f.shares-removeSh);
+    f.paid=Math.max(0,f.paid-removePaid);
+    if(f.shares<=0.001) delete sk.fundSources[lid];
+  });
+}
 function getStocksByFund(loanId){
-  return data.invest.items.filter(function(it){return it.sk&&it.sk.fundSource===loanId;});
+  var result=[];
+  data.invest.items.forEach(function(it){
+    if(!it.sk) return;
+    var fs=_getFundSources(it.sk);
+    if(fs[loanId]&&fs[loanId].shares>0) result.push({it:it,fundedShares:fs[loanId].shares,fundedPaid:fs[loanId].paid});
+  });
+  return result;
 }
 function getAllLevStocks(){
-  var ids=[];
-  getLoanAccounts().forEach(function(l){ids.push(l.id);});
-  return data.invest.items.filter(function(it){return it.sk&&it.sk.fundSource&&ids.indexOf(it.sk.fundSource)>=0;});
+  var ids={};
+  getLoanAccounts().forEach(function(l){ids[l.id]=true;});
+  return data.invest.items.filter(function(it){
+    if(!it.sk) return false;
+    var fs=_getFundSources(it.sk);
+    return Object.keys(fs).some(function(lid){return ids[lid]&&fs[lid].shares>0;});
+  });
 }
 
 function levCalcPMT(P,rateAnnual,n){
@@ -4029,14 +4071,25 @@ function renderLeverage(){
 
 function renderLevSummary(){
   var loans=getLoanAccounts(),pledges=getPledgeAccounts();
-  var creditAssetVal=0,creditCost=0,creditDebt=0;
+  var creditAssetVal=0,creditCost=0,creditDebt=0,uninvestedCredit=0;
   loans.forEach(function(l){
     var stocks=getStocksByFund(l.id);
+    var loanInvested=0;
     stocks.forEach(function(s){
-      creditAssetVal+=acctVal(s);
-      creditCost+=Math.round(s.sk.paid*(s.sk.isUs?st.fxRate:1));
+      var sk=s.it.sk,fxM=sk.isUs?st.fxRate:1;
+      var fundedVal=Math.round(s.fundedShares*(sk.curPrice||sk.avgPrice)*fxM);
+      var fundedCost=Math.round(s.fundedPaid*fxM);
+      creditAssetVal+=fundedVal;
+      creditCost+=fundedCost;
+      loanInvested+=fundedCost;
     });
-    creditDebt+=Math.abs(l.bal);
+    var loanAmt=Math.abs(l.bal);
+    var loanFee=(l.loan&&l.loan._fee)||0;
+    var disbursed=loanAmt-loanFee;
+    var unInv=Math.max(0,disbursed-loanInvested);
+    uninvestedCredit+=unInv;
+    creditAssetVal+=unInv;
+    creditDebt+=loanAmt;
   });
   var pledgeAssetVal=0,pledgeDebt=0;
   pledges.forEach(function(p){
@@ -4118,12 +4171,13 @@ function renderCreditAnalysis(){
     if(paid===0) remaining=ld.principal;
     var progressPct=Math.round(paid/ld.total_months*100);
 
-    // associated stocks
+    // associated stocks (funded portion only)
     var stocks=getStocksByFund(loan.id);
     var stockMktVal=0,stockCost=0;
     stocks.forEach(function(s){
-      stockMktVal+=acctVal(s);
-      stockCost+=Math.round(s.sk.paid*(s.sk.isUs?st.fxRate:1));
+      var sk=s.it.sk,fxM=sk.isUs?st.fxRate:1;
+      stockMktVal+=Math.round(s.fundedShares*(sk.curPrice||sk.avgPrice)*fxM);
+      stockCost+=Math.round(s.fundedPaid*fxM);
     });
     totalMarketVal+=stockMktVal;
     totalCost+=stockCost;
@@ -4163,18 +4217,19 @@ function renderCreditAnalysis(){
     html+='<div class="lev-metric"><div class="lev-metric-lbl">利息覆蓋率 ICR</div><div class="lev-metric-val '+(icr>=1?'g':icr>0?'w':'r')+'">'+icr.toFixed(2)+'x</div></div>';
     html+='</div>';
 
-    // associated stocks
+    // associated stocks (funded portion)
     if(stocks.length){
       html+='<div class="lev-section-lbl">📈 信貸投資標的</div>';
       stocks.forEach(function(s){
-        var mkt=s.sk.shares*s.sk.curPrice*(s.sk.isUs?st.fxRate:1);
-        var sPaidTWD=s.sk.paid*(s.sk.isUs?st.fxRate:1);
+        var sk=s.it.sk,fxM=sk.isUs?st.fxRate:1;
+        var mkt=Math.round(s.fundedShares*(sk.curPrice||sk.avgPrice)*fxM);
+        var sPaidTWD=Math.round(s.fundedPaid*fxM);
         var sp=mkt-sPaidTWD;
         var spPct=sPaidTWD>0?(sp/sPaidTWD*100):0;
         html+='<div class="lev-stock-row">';
-        html+='<div class="lev-stock-dot" style="background:'+s.dot+'33;color:'+s.dot+'">'+s.name.charAt(0)+'</div>';
-        html+='<div class="lev-stock-info"><div class="lev-stock-name">'+s.name+'</div>';
-        html+='<div class="lev-stock-sub">'+s.sk.shares+'股 × $'+s.sk.curPrice+'</div></div>';
+        html+='<div class="lev-stock-dot" style="background:'+s.it.dot+'33;color:'+s.it.dot+'">'+s.it.name.charAt(0)+'</div>';
+        html+='<div class="lev-stock-info"><div class="lev-stock-name">'+s.it.name+'</div>';
+        html+='<div class="lev-stock-sub">'+Math.round(s.fundedShares*100)/100+'股(信貸) × $'+(sk.curPrice||sk.avgPrice)+'</div></div>';
         html+='<div class="lev-stock-val"><div style="color:'+(sp>=0?'var(--green)':'#f25c5c')+'">'+(sp>=0?'+':'')+fmtN(cvt(sp))+'</div>';
         html+='<div>'+(spPct>=0?'+':'')+spPct.toFixed(1)+'%</div></div>';
         html+='</div>';
@@ -4208,7 +4263,7 @@ function renderCreditAnalysis(){
   var totalAllAssets=0;
   ['liquid','invest','fixed','recv'].forEach(function(k){data[k].items.forEach(function(it){if(it.stat&&acctVal(it)>0)totalAllAssets+=acctVal(it);});});
   var creditAssetVal=0;
-  loans.forEach(function(l){getStocksByFund(l.id).forEach(function(s){creditAssetVal+=acctVal(s);});});
+  loans.forEach(function(l){getStocksByFund(l.id).forEach(function(s){var sk=s.it.sk,fxM=sk.isUs?st.fxRate:1;creditAssetVal+=Math.round(s.fundedShares*(sk.curPrice||sk.avgPrice)*fxM);});});
   var selfAsset=totalAllAssets-creditAssetVal;
   if(selfAsset<0)selfAsset=0;
   var creditPct=totalAllAssets>0?(creditAssetVal/totalAllAssets*100):0;
