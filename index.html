@@ -15,7 +15,7 @@
 <!-- PWA: common -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=14">
+<link rel="stylesheet" href="style.css?v=16">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -406,6 +406,10 @@
             <div class="acct-pick-btn" id="add-sk-src-btn" onclick="openAcctPicker('add-sk-src')">選擇扣款帳戶</div>
             <input type="hidden" id="add-sk-src-id">
           </div>
+          <div class="field">
+            <label>關聯信貸（選填）</label>
+            <select id="add-fund-source" style="width:100%;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:10px 12px;font-family:var(--font);font-size:14px;color:var(--fg0);-webkit-appearance:none"><option value="">無</option></select>
+          </div>
           <div class="field"><label>槓桿倍數</label>
             <select id="add-leverage">
               <option value="1">1x（一般）</option>
@@ -500,6 +504,13 @@
     </div>
     <div class="field"><label>說明（選填）</label><input type="text" id="edit-desc"></div>
     <div class="tog-row"><span class="tog-lbl">納入統計與淨值</span><button class="tog on" id="edit-stat" onclick="this.classList.toggle('on')"></button></div>
+    <!-- stock fund source -->
+    <div id="edit-fund-section" style="display:none">
+      <div class="field">
+        <label>關聯信貸（選填）</label>
+        <select id="edit-fund-source" style="width:100%;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:10px 12px;font-family:var(--font);font-size:14px;color:var(--fg0);-webkit-appearance:none"><option value="">無</option></select>
+      </div>
+    </div>
     <!-- stock leverage -->
     <div id="edit-lev-section" style="display:none">
       <div class="field"><label>槓桿倍數</label>
@@ -640,6 +651,10 @@
         <div class="acct-pick-btn" id="tx-buy-src-btn" onclick="openAcctPicker('tx-buy-src')">選擇扣款帳戶</div>
         <input type="hidden" id="tx-buy-src-id">
       </div>
+      <div class="field">
+        <label>關聯信貸（選填）</label>
+        <select id="txb-fund-source" style="width:100%;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:10px 12px;font-family:var(--font);font-size:14px;color:var(--fg0);-webkit-appearance:none"><option value="">無</option></select>
+      </div>
       <div class="field"><label>日期</label><input type="date" id="tx-buy-date"></div>
       <button class="subbtn" onclick="submitTxBuy()">買入</button>
     </div>
@@ -675,6 +690,10 @@
         <div class="info-row"><span class="info-lbl">賣出收益</span><span class="info-val" id="tx-sell-revenue">—</span></div>
         <div class="info-row"><span class="info-lbl">買入成本</span><span class="info-val" id="tx-sell-cost">—</span></div>
         <div class="info-row" style="border-top:1px solid var(--bg4);padding-top:8px;margin-top:4px"><span class="info-lbl" style="font-weight:600">損益</span><span class="info-val" id="tx-sell-gain">—</span></div>
+      </div>
+      <div class="field">
+        <label>關聯信貸（選填）</label>
+        <select id="txs-fund-source" style="width:100%;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:10px 12px;font-family:var(--font);font-size:14px;color:var(--fg0);-webkit-appearance:none"><option value="">無</option></select>
       </div>
       <div class="field"><label>日期</label><input type="date" id="tx-sell-date"></div>
       <button class="subbtn" onclick="submitTxSell()">賣出</button>
@@ -717,6 +736,10 @@
         <label>扣款帳戶（選填）</label>
         <div class="acct-pick-btn" id="s-sk-src-btn" onclick="openAcctPicker('s-sk-src')">選擇扣款帳戶</div>
         <input type="hidden" id="s-sk-src-id">
+      </div>
+      <div class="field">
+        <label>關聯信貸（選填）</label>
+        <select id="s-fund-source" style="width:100%;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:10px 12px;font-family:var(--font);font-size:14px;color:var(--fg0);-webkit-appearance:none"><option value="">無</option></select>
       </div>
       <div class="field"><label>槓桿倍數</label>
         <select id="s-leverage">
@@ -862,6 +885,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=14"></script>
+<script src="app.js?v=16"></script>
 </body>
 </html>

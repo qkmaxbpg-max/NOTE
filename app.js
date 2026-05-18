@@ -609,25 +609,28 @@ function api(method,url,body){
         if(body.hasOwnProperty(f))upd[f]=body[f];
       });
       if(upd.hasOwnProperty('recurring'))upd.recurring=!!upd.recurring;
-      // Adjust account balances
+      // Adjust account balances (chained properly)
+      var balChain=Promise.resolve();
       if(old){
         var oldAmt=old.amount,newAmt=body.hasOwnProperty('amount')?body.amount:oldAmt;
         var oldAcct=old.account_id,newAcct=body.hasOwnProperty('account_id')?body.account_id:oldAcct;
         if(oldAcct&&oldAcct===newAcct){
           var diff=newAmt-oldAmt;
-          if(diff!==0) sb.from('accounts').select('balance').eq('id',oldAcct).single().then(function(r){
-            if(r.data) sb.from('accounts').update({balance:r.data.balance+diff}).eq('id',oldAcct).then(function(){});
+          if(diff!==0) balChain=sb.from('accounts').select('balance').eq('id',oldAcct).single().then(function(r){
+            if(r.data) return sb.from('accounts').update({balance:r.data.balance+diff}).eq('id',oldAcct);
           });
         } else {
-          if(oldAcct) sb.from('accounts').select('balance').eq('id',oldAcct).single().then(function(r){
-            if(r.data) sb.from('accounts').update({balance:r.data.balance-oldAmt}).eq('id',oldAcct).then(function(){});
-          });
-          if(newAcct) sb.from('accounts').select('balance').eq('id',newAcct).single().then(function(r){
-            if(r.data) sb.from('accounts').update({balance:r.data.balance+newAmt}).eq('id',newAcct).then(function(){});
-          });
+          if(oldAcct) balChain=balChain.then(function(){return sb.from('accounts').select('balance').eq('id',oldAcct).single().then(function(r){
+            if(r.data) return sb.from('accounts').update({balance:r.data.balance-oldAmt}).eq('id',oldAcct);
+          });});
+          if(newAcct) balChain=balChain.then(function(){return sb.from('accounts').select('balance').eq('id',newAcct).single().then(function(r){
+            if(r.data) return sb.from('accounts').update({balance:r.data.balance+newAmt}).eq('id',newAcct);
+          });});
         }
       }
-      return sb.from('transactions').update(upd).eq('id',tid).then(function(){return{ok:true};});
+      return balChain.then(function(){
+        return sb.from('transactions').update(upd).eq('id',tid).then(function(){return{ok:true};});
+      });
     });
   }
   // DELETE /api/transactions/:id
@@ -636,12 +639,15 @@ function api(method,url,body){
     var dtid=parseInt(m[1]);
     return sb.from('transactions').select('*').eq('id',dtid).single().then(function(oldRes){
       var old=oldRes.data;
+      var balPromise=Promise.resolve();
       if(old&&old.account_id){
-        sb.from('accounts').select('balance').eq('id',old.account_id).single().then(function(r){
-          if(r.data) sb.from('accounts').update({balance:r.data.balance-old.amount}).eq('id',old.account_id).then(function(){});
+        balPromise=sb.from('accounts').select('balance').eq('id',old.account_id).single().then(function(r){
+          if(r.data) return sb.from('accounts').update({balance:r.data.balance-old.amount}).eq('id',old.account_id);
         });
       }
-      return sb.from('transactions').delete().eq('id',dtid).then(function(){return{ok:true};});
+      return balPromise.then(function(){
+        return sb.from('transactions').delete().eq('id',dtid).then(function(){return{ok:true};});
+      });
     });
   }
   // GET /api/categories
@@ -1211,7 +1217,7 @@ function addGoS3(type){
   $('add-stock-f').style.display=isStock?'block':'none';
   $('add-bal-wrap').style.display=isStock?'none':'';// hide balance for stocks
   $('add-ccy-wrap').style.display=isStock?'none':'';
-  if(isStock){$('add-paid-ccy').value='TWD';setPaidCcy('add','TWD');$('add-sk-src-id').value='';$('add-sk-src-btn').textContent='選擇扣款帳戶';$('add-sk-src-btn').classList.remove('selected');}
+  if(isStock){$('add-paid-ccy').value='TWD';setPaidCcy('add','TWD');$('add-sk-src-id').value='';$('add-sk-src-btn').textContent='選擇扣款帳戶';$('add-sk-src-btn').classList.remove('selected');populateFundSourceSelect('add-fund-source');}
   $('add-ccy').value='TWD';renderCcyChips('add');pickCcy('add','TWD');
   if(isStock) clearStockSelection('add');
   $('add-debt-f').style.display=(LOAN_TYPES.indexOf(type)>=0)?'block':'none';
@@ -1397,7 +1403,8 @@ function submitAddAcct(){
     var cpEl=$('add-selected-card');
     if(cpEl&&cpEl._livePrice) curPrice=cpEl._livePrice;
     var fee=paidNative-(sh*pr);
-    payload.stock_data={ticker:$('add-ticker').value.trim().toUpperCase()||name,shares:sh,avgPrice:pr,paid:paidNative,curPrice:curPrice,fee:fee,isUs:isUs,leverage:addLev,paidCcy:paidCcy,paidOriginal:paid};
+    var addFundSrc=parseInt($('add-fund-source').value)||null;
+    payload.stock_data={ticker:$('add-ticker').value.trim().toUpperCase()||name,shares:sh,avgPrice:pr,paid:paidNative,curPrice:curPrice,fee:fee,isUs:isUs,leverage:addLev,paidCcy:paidCcy,paidOriginal:paid,fundSource:addFundSrc};
     // store source account for deduction
     var addSkSrcId=parseInt($('add-sk-src-id').value)||0;
     if(addSkSrcId) payload._skSrcId=addSkSrcId;
@@ -1414,6 +1421,7 @@ function submitAddAcct(){
       var nCur=curPrice;
       var nMkt=isUs?Math.round(tShares*nCur*st.fxRate):Math.round(tShares*nCur);
       var uSk=Object.assign({},osk,{shares:tShares,avgPrice:Math.round(nAvg*1000)/1000,paid:nPaid,fee:nFee,curPrice:nCur});
+      if(addFundSrc) uSk.fundSource=addFundSrc;
       var addPaidTWD=payload._paidTWD;
       var addSkSrcId2=payload._skSrcId;
       sb.from('accounts').update({balance:nMkt,stock_data:uSk}).eq('id',existingAdd.id).then(function(){
@@ -1582,6 +1590,9 @@ function openEditAcct(key,idx){
   } else {
     $('edit-fee-box').style.display='none';
   }
+  // stock fund source
+  $('edit-fund-section').style.display=isStock?'block':'none';
+  if(isStock){populateFundSourceSelect('edit-fund-source',it.sk.fundSource||null);}
   // stock leverage section
   $('edit-lev-section').style.display=isStock?'block':'none';
   if(isStock) $('edit-leverage').value=String(it.sk.leverage||1);
@@ -1703,7 +1714,8 @@ function submitEdit(){
     var eFee=ePaid-(eSh*ePr);
     var eCurPrice=it.sk.curPrice||ePr;
     var eIsUs=it.sk.isUs;
-    payload.stock_data=Object.assign({},it.sk,{leverage:newLev,shares:eSh,avgPrice:ePr,paid:ePaid,fee:eFee});
+    var editFundSrc=parseInt($('edit-fund-source').value)||null;
+    payload.stock_data=Object.assign({},it.sk,{leverage:newLev,shares:eSh,avgPrice:ePr,paid:ePaid,fee:eFee,fundSource:editFundSrc});
     // auto-calculate balance as market value
     if(eIsUs){
       newBal=Math.round(eSh*eCurPrice*st.fxRate);
@@ -2110,7 +2122,9 @@ function submitStock(){
     var newPaid=oldSk.paid+paidNative;
     var newFee=oldSk.fee+fee;
     var newMktVal=isUs?Math.round(totalShares*curPrice*st.fxRate):Math.round(totalShares*curPrice);
+    var sFundSrc=parseInt($('s-fund-source').value)||null;
     var updatedSk=Object.assign({},oldSk,{shares:totalShares,avgPrice:Math.round(newAvg*1000)/1000,paid:newPaid,fee:newFee,curPrice:curPrice});
+    if(sFundSrc) updatedSk.fundSource=sFundSrc;
     sb.from('accounts').update({balance:newMktVal,stock_data:updatedSk}).eq('id',existing.id).then(function(){
       existing.sk=updatedSk;existing.bal=newMktVal;
       var promises=[];
@@ -2145,7 +2159,7 @@ function submitStock(){
 
   api('POST','/api/accounts',{
     category:'invest',name:tk,type:'股票',balance:mktVal,description:nm,dot_color:dot,stat:true,
-    stock_data:{ticker:tk,shares:sh,avgPrice:pr,paid:paidNative,curPrice:curPrice,fee:fee,isUs:isUs,leverage:parseInt($('s-leverage').value)||1,paidCcy:paidCcy,paidOriginal:paid}
+    stock_data:{ticker:tk,shares:sh,avgPrice:pr,paid:paidNative,curPrice:curPrice,fee:fee,isUs:isUs,leverage:parseInt($('s-leverage').value)||1,paidCcy:paidCcy,paidOriginal:paid,fundSource:parseInt($('s-fund-source').value)||null}
   }).then(function(newAcct){
     var newId=newAcct?newAcct.id:null;
     var promises=[];
@@ -2408,7 +2422,7 @@ function openModal(type){
     $('f-acct-btn').classList.remove('selected');
     $('m-tx').classList.add('on');
   }
-  if(type==='stock'){clearStockSelection('s');$('s-search').value='';$('s-paid-ccy').value='TWD';setPaidCcy('s','TWD');$('s-sk-src-id').value='';$('s-sk-src-btn').textContent='選擇扣款帳戶';$('s-sk-src-btn').classList.remove('selected');$('m-stock').classList.add('on');}
+  if(type==='stock'){clearStockSelection('s');$('s-search').value='';$('s-paid-ccy').value='TWD';setPaidCcy('s','TWD');$('s-sk-src-id').value='';$('s-sk-src-btn').textContent='選擇扣款帳戶';$('s-sk-src-btn').classList.remove('selected');populateFundSourceSelect('s-fund-source');$('m-stock').classList.add('on');}
   if(type==='cat'){renderCatManager();buildGrpSelect();$('m-cat').classList.add('on');}
 }
 ['m-addacct','m-edit','m-grp','m-tx','m-stock','m-cat','m-transfer','m-acct-picker','m-cat-picker','m-user-edit'].forEach(function(id){
@@ -2502,13 +2516,17 @@ function populateTxBuyStock(){
   $('tx-buy-sh').value='';$('tx-buy-pr').value='';$('tx-buy-paid').value='';
   $('tx-buy-src-id').value='';$('tx-buy-src-btn').textContent='選擇扣款帳戶';$('tx-buy-src-btn').classList.remove('selected');
   $('txb-paid-ccy').value='TWD';setPaidCcy('txb','TWD');
+  populateFundSourceSelect('txb-fund-source');
 }
 function onTxBuyStockChange(){
   var v=$('tx-buy-stock').value;
   $('tx-buy-search-wrap').style.display=v==='__new__'?'block':'none';
   if(v&&v!=='__new__'){
     var it=allAccounts.find(function(a){return a.id===parseInt(v);});
-    if(it&&it.sk) $('tx-buy-pr').value=it.sk.curPrice||it.sk.avgPrice;
+    if(it&&it.sk){
+      $('tx-buy-pr').value=it.sk.curPrice||it.sk.avgPrice;
+      populateFundSourceSelect('txb-fund-source',it.sk.fundSource||null);
+    }
   }
 }
 function calcTxBuy(){
@@ -2544,6 +2562,7 @@ function submitTxBuy(){
   var fee=paidNative-(sh*pr);
   var curPrice=pr;
   var paidTWD=paidCcy==='TWD'?paid:(isUs?Math.round(paidNative*st.fxRate):paidNative);
+  var txbFundSrc=parseInt($('txb-fund-source').value)||null;
 
   if(existing){
     // merge into existing
@@ -2555,6 +2574,7 @@ function submitTxBuy(){
     curPrice=osk.curPrice||pr;
     var nMkt=isUs?Math.round(tShares*curPrice*st.fxRate):Math.round(tShares*curPrice);
     var uSk=Object.assign({},osk,{shares:tShares,avgPrice:Math.round(nAvg*1000)/1000,paid:nPaid,fee:nFee});
+    if(txbFundSrc) uSk.fundSource=txbFundSrc;
     var promises=[];
     promises.push(sb.from('accounts').update({balance:nMkt,stock_data:uSk}).eq('id',existing.id));
     promises.push(api('POST','/api/transactions',{
@@ -2581,7 +2601,7 @@ function submitTxBuy(){
     var dot=DOTS[data.invest.items.length%DOTS.length];
     api('POST','/api/accounts',{
       category:'invest',name:tk,type:'股票',balance:mktVal,description:tk,dot_color:dot,stat:true,
-      stock_data:{ticker:tk,shares:sh,avgPrice:pr,paid:paidNative,curPrice:curPrice,fee:fee,isUs:isUs,leverage:1}
+      stock_data:{ticker:tk,shares:sh,avgPrice:pr,paid:paidNative,curPrice:curPrice,fee:fee,isUs:isUs,leverage:1,fundSource:txbFundSrc}
     }).then(function(newAcct){
       var newId=newAcct?newAcct.id:null;
       var promises=[];
@@ -2622,6 +2642,7 @@ function populateTxSellStock(){
   $('tx-sell-dest-id').value='';$('tx-sell-dest-btn').textContent='選擇入帳帳戶';$('tx-sell-dest-btn').classList.remove('selected');
   $('txs-paid-ccy').value='TWD';setPaidCcy('txs','TWD');
   $('tx-sell-pnl').style.display='none';
+  populateFundSourceSelect('txs-fund-source');
 }
 function onTxSellStockChange(){
   var v=$('tx-sell-stock').value;
@@ -2631,6 +2652,7 @@ function onTxSellStockChange(){
     $('tx-sell-info').innerHTML='持有 <b>'+it.sk.shares+'</b> 股 · 均價 <b>'+it.sk.avgPrice+'</b> · 現價 <b>'+it.sk.curPrice+'</b>';
     $('tx-sell-info').style.display='block';
     $('tx-sell-pr').value=it.sk.curPrice||'';
+    populateFundSourceSelect('txs-fund-source',it.sk.fundSource||null);
   }
 }
 function calcTxSell(){
@@ -2679,7 +2701,8 @@ function submitTxSell(){
   var remainFee=remainShares>0?osk.fee*(remainShares/osk.shares):0;
   var curPrice=osk.curPrice||pr;
   var newMkt=remainShares>0?(isUs?Math.round(remainShares*curPrice*st.fxRate):Math.round(remainShares*curPrice)):0;
-  var uSk=Object.assign({},osk,{shares:remainShares,paid:remainPaid,fee:remainFee});
+  var txsFundSrc=parseInt($('txs-fund-source').value)||null;
+  var uSk=Object.assign({},osk,{shares:remainShares,paid:remainPaid,fee:remainFee,fundSource:txsFundSrc});
 
   var promises=[];
   if(remainShares>0){
@@ -3231,32 +3254,48 @@ function _drawChart(pts,labels,svgId,axId,ttlId){
     if(axEl) axEl.innerHTML='<span>—</span>';
     return;
   }
-  var W=340,H=120,padT=12,padB=5,padL=5,padR=5;
+  var W=340,H=120,padT=16,padB=5,padL=5,padR=5;
   var cH=H-padT-padB,cW=W-padL-padR,n=pts.length;
   var minV=Math.min.apply(null,pts),maxV=Math.max.apply(null,pts);
   var range=maxV-minV;
   if(range<1){minV-=500;maxV+=500;range=1000;}
-  minV-=range*0.08;maxV+=range*0.08;range=maxV-minV;
+  minV-=range*0.12;maxV+=range*0.12;range=maxV-minV;
   var sx=function(i){return padL+(n>1?i/(n-1)*cW:cW/2);};
   var sy=function(v){return padT+cH-(v-minV)/range*cH;};
+  // smooth curve using catmull-rom → cubic bezier
   var pathD='';
-  pts.forEach(function(v,i){
-    var x=sx(i).toFixed(1),y=sy(v).toFixed(1);
-    pathD+=i===0?'M'+x+' '+y:' L'+x+' '+y;
-  });
+  if(n===1){
+    pathD='M'+sx(0).toFixed(1)+' '+sy(pts[0]).toFixed(1);
+  } else if(n===2){
+    pathD='M'+sx(0).toFixed(1)+' '+sy(pts[0]).toFixed(1)+' L'+sx(1).toFixed(1)+' '+sy(pts[1]).toFixed(1);
+  } else {
+    pathD='M'+sx(0).toFixed(1)+' '+sy(pts[0]).toFixed(1);
+    for(var ci=0;ci<n-1;ci++){
+      var x0=sx(Math.max(ci-1,0)),y0=sy(pts[Math.max(ci-1,0)]);
+      var x1=sx(ci),y1=sy(pts[ci]);
+      var x2=sx(ci+1),y2=sy(pts[ci+1]);
+      var x3=sx(Math.min(ci+2,n-1)),y3=sy(pts[Math.min(ci+2,n-1)]);
+      var cp1x=(x1+(x2-x0)/6).toFixed(1),cp1y=(y1+(y2-y0)/6).toFixed(1);
+      var cp2x=(x2-(x3-x1)/6).toFixed(1),cp2y=(y2-(y3-y1)/6).toFixed(1);
+      pathD+=' C'+cp1x+','+cp1y+' '+cp2x+','+cp2y+' '+sx(ci+1).toFixed(1)+','+sy(pts[ci+1]).toFixed(1);
+    }
+  }
   var areaD=pathD+' L'+sx(n-1).toFixed(1)+' '+H+' L'+sx(0).toFixed(1)+' '+H+'Z';
   var trend=n>1?pts[n-1]-pts[0]:0;
   var col=trend>=0?'var(--green)':'var(--red)';
   var lx=sx(n-1).toFixed(1),ly=sy(pts[n-1]).toFixed(1);
+  // small dots at start and end
+  var fx=sx(0).toFixed(1),fy=sy(pts[0]).toFixed(1);
   svg.innerHTML=
     '<defs><linearGradient id="'+gradId+'" x1="0" y1="0" x2="0" y2="1">'
-    +'<stop offset="0%" stop-color="'+col+'" stop-opacity=".3"/>'
+    +'<stop offset="0%" stop-color="'+col+'" stop-opacity=".18"/>'
     +'<stop offset="100%" stop-color="'+col+'" stop-opacity="0"/>'
     +'</linearGradient></defs>'
     +'<path d="'+areaD+'" fill="url(#'+gradId+')"/>'
-    +'<path d="'+pathD+'" fill="none" stroke="'+col+'" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>'
-    +'<circle cx="'+lx+'" cy="'+ly+'" r="5" fill="'+col+'"/>'
-    +'<circle cx="'+lx+'" cy="'+ly+'" r="9" fill="'+col+'" opacity=".2"/>';
+    +'<path d="'+pathD+'" fill="none" stroke="'+col+'" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>'
+    +'<circle cx="'+fx+'" cy="'+fy+'" r="3" fill="'+col+'" opacity=".5"/>'
+    +'<circle cx="'+lx+'" cy="'+ly+'" r="3.5" fill="'+col+'"/>'
+    +'<circle cx="'+lx+'" cy="'+ly+'" r="7" fill="'+col+'" opacity=".15"/>';
   var ttl=$(ttlId);
   if(ttl) ttl.textContent=fmtN(cvt(pts[n-1]));
   if(axEl){
@@ -3273,11 +3312,11 @@ function _drawChart(pts,labels,svgId,axId,ttlId){
     el.style.pointerEvents='none';
     return el;
   }
-  var hLine=svgEl('line',{stroke:'var(--fg2)','stroke-width':'1','stroke-dasharray':'3,3',x1:'-1',x2:'-1',y1:padT,y2:H});
-  var hDot=svgEl('circle',{r:'4.5',stroke:'var(--bg1)','stroke-width':'2',fill:col,cx:'-99',cy:'-99'});
-  var tipBg=svgEl('rect',{rx:'5',ry:'5',fill:'var(--bg2)',stroke:'var(--bg4)','stroke-width':'1',x:'-999',y:'-999',width:'0',height:'22'});
-  var tipLbl=svgEl('text',{'font-size':'10','font-family':'var(--mono)',fill:'var(--fg2)','text-anchor':'middle',x:'-999',y:'-999'});
-  var tipVal=svgEl('text',{'font-size':'11.5','font-family':'var(--mono)',fill:'var(--fg0)','font-weight':'600','text-anchor':'middle',x:'-999',y:'-999'});
+  var hLine=svgEl('line',{stroke:'var(--fg3)','stroke-width':'.8','stroke-dasharray':'2,2',x1:'-1',x2:'-1',y1:padT,y2:H});
+  var hDot=svgEl('circle',{r:'3.5',stroke:'var(--bg1)','stroke-width':'1.5',fill:col,cx:'-99',cy:'-99'});
+  var tipBg=svgEl('rect',{rx:'6',ry:'6',fill:'var(--bg1)',stroke:'var(--bg4)','stroke-width':'.8',x:'-999',y:'-999',width:'0',height:'22',opacity:'.92'});
+  var tipLbl=svgEl('text',{'font-size':'9','font-family':'var(--mono)',fill:'var(--fg3)','text-anchor':'middle',x:'-999',y:'-999'});
+  var tipVal=svgEl('text',{'font-size':'11','font-family':'var(--mono)',fill:'var(--fg0)','font-weight':'600','text-anchor':'middle',x:'-999',y:'-999'});
   var ov=document.createElementNS(NS,'rect');
   ov.setAttribute('x','0');ov.setAttribute('y','0');
   ov.setAttribute('width','340');ov.setAttribute('height',H);
@@ -3296,14 +3335,14 @@ function _drawChart(pts,labels,svgId,axId,ttlId){
     hDot.setAttribute('cx',x);hDot.setAttribute('cy',y);
     var valStr=ccySym()+' '+fmtN(cvt(pts[idx]));
     var lblStr=labels[idx];
-    var tipW=Math.max(valStr.length*7.2+16,80),tipH=38;
-    var tx=Math.min(Math.max(x-tipW/2,3),W-tipW-3);
-    var ty=y>padT+tipH+4?y-tipH-8:y+8;
+    var tipW=Math.max(valStr.length*6.8+14,72),tipH=34;
+    var tx=Math.min(Math.max(x-tipW/2,2),W-tipW-2);
+    var ty=y>tipH+8?y-tipH-6:y+10;
     tipBg.setAttribute('x',tx);tipBg.setAttribute('y',ty);
     tipBg.setAttribute('width',tipW);tipBg.setAttribute('height',tipH);
-    tipLbl.setAttribute('x',tx+tipW/2);tipLbl.setAttribute('y',ty+13);
+    tipLbl.setAttribute('x',tx+tipW/2);tipLbl.setAttribute('y',ty+12);
     tipLbl.textContent=lblStr;
-    tipVal.setAttribute('x',tx+tipW/2);tipVal.setAttribute('y',ty+28);
+    tipVal.setAttribute('x',tx+tipW/2);tipVal.setAttribute('y',ty+26);
     tipVal.textContent=valStr;
   }
   function hideTip(){
@@ -3653,6 +3692,17 @@ function getHistoricalLoans(){
 }
 function getPledgeAccounts(){
   return data.debt.items.filter(function(it){return it.loan&&it.loan.pledge_type;});
+}
+function populateFundSourceSelect(selId,currentVal){
+  var sel=$(selId);if(!sel)return;
+  var loans=getLoanAccounts().concat(getPledgeAccounts());
+  sel.innerHTML='<option value="">無</option>';
+  loans.forEach(function(l){
+    var opt=document.createElement('option');
+    opt.value=l.id;opt.textContent=l.name;
+    if(currentVal&&l.id===currentVal)opt.selected=true;
+    sel.appendChild(opt);
+  });
 }
 function getStocksByFund(loanId){
   return data.invest.items.filter(function(it){return it.sk&&it.sk.fundSource===loanId;});
