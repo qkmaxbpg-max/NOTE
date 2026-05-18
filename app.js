@@ -51,6 +51,7 @@ function fmtN(n){return Math.abs(Math.round(n)).toLocaleString('zh-TW');}
 function fmtAmt(n){return(n<0?'－':'')+fmtN(n);}
 function cvt(n){return st.ccy==='USD'?Math.round(n/st.fxRate):Math.round(n);}
 function ccySym(){return st.ccy==='USD'?'US$':'NT$';}
+function acctVal(it){return it.sk?Math.round(it.sk.shares*it.sk.curPrice*(it.sk.isUs?st.fxRate:1)):it.bal;}
 
 // ── Yahoo Finance via Supabase RPC (server-side proxy) ──
 function yfQuote(symbol){
@@ -891,7 +892,7 @@ function getCatIcon(catName){
 function calcNetWorth(){
   var total=0;
   ['liquid','invest','fixed','recv','debt'].forEach(function(k){
-    data[k].items.forEach(function(it){if(it.stat)total+=it.bal;});
+    data[k].items.forEach(function(it){if(it.stat)total+=acctVal(it);});
   });
   return total;
 }
@@ -950,7 +951,7 @@ function renderOverview(){
       var items=grouped[grpName];
       var openKey=key+'|'+grpName;
       var isOpen=!!st.openGrps[openKey];
-      var grpTotal=items.reduce(function(s,o){return s+(o.it.stat?o.it.bal:0);},0);
+      var grpTotal=items.reduce(function(s,o){return s+(o.it.stat?acctVal(o.it):0);},0);
 
       var card=document.createElement('div');
       card.className='grp-card'+(isOpen?' open':'');
@@ -1002,7 +1003,7 @@ function renderOverview(){
     inner.innerHTML='';
     inner.appendChild(wrap);
 
-    var total=d.items.filter(function(it){return it.stat;}).reduce(function(s,it){return s+it.bal;},0);
+    var total=d.items.filter(function(it){return it.stat;}).reduce(function(s,it){return s+acctVal(it);},0);
     var ttlEl=$('ttl-'+key);
     if(ttlEl){
       ttlEl.textContent=fmtAmt(cvt(total));
@@ -1858,7 +1859,7 @@ function renderPledgeStocksSelector(prefix,currentPledged){
     var checked=pmap[stk.id]!==undefined;
     var defShares=pmap[stk.id]||(stk.sk?stk.sk.shares:0);
     var totalShares=stk.sk?stk.sk.shares:0;
-    var mkt=Math.abs(stk.bal);
+    var mkt=acctVal(stk);
     html+='<div class="pledge-stock-item">';
     html+='<div class="pledge-stock-hd" onclick="togglePledgeStock(\''+prefix+'\','+stk.id+')">';
     html+='<div class="pledge-stock-check'+(checked?' on':'')+'" id="psc-'+prefix+'-'+stk.id+'"></div>';
@@ -3639,7 +3640,7 @@ function _drawChart(pts,labels,svgId,axId,ttlId){
 var skChartPeriod='月';
 function renderStockChart(period){
   if(period) skChartPeriod=period;
-  var investTotal=data.invest.items.filter(function(it){return it.stat;}).reduce(function(s,it){return s+it.bal;},0);
+  var investTotal=data.invest.items.filter(function(it){return it.stat;}).reduce(function(s,it){return s+acctVal(it);},0);
   var investIds={};
   data.invest.items.forEach(function(it){investIds[it.id]=true;});
   var today=new Date().toISOString().slice(0,10);
@@ -3949,12 +3950,12 @@ function calcPledgeMktVal(ld){
   if(ld.pledged_stocks&&ld.pledged_stocks.length){
     ld.pledged_stocks.forEach(function(ps){
       var stk=data.invest.items.find(function(s){return s.id===ps.account_id;});
-      if(stk&&stk.sk&&stk.sk.shares>0) val+=Math.abs(stk.bal)*(ps.shares/stk.sk.shares);
+      if(stk&&stk.sk&&stk.sk.shares>0) val+=acctVal(stk)*(ps.shares/stk.sk.shares);
     });
   } else {
     (ld.pledged_accounts||[]).forEach(function(aid){
       var stk=data.invest.items.find(function(s){return s.id===aid;});
-      if(stk) val+=Math.abs(stk.bal);
+      if(stk) val+=acctVal(stk);
     });
   }
   return val;
@@ -4032,7 +4033,7 @@ function renderLevSummary(){
   loans.forEach(function(l){
     var stocks=getStocksByFund(l.id);
     stocks.forEach(function(s){
-      creditAssetVal+=Math.abs(s.bal);
+      creditAssetVal+=acctVal(s);
       creditCost+=Math.round(s.sk.paid*(s.sk.isUs?st.fxRate:1));
     });
     creditDebt+=Math.abs(l.bal);
@@ -4048,7 +4049,7 @@ function renderLevSummary(){
   var multiplier=netWorth>0?(totalAsset/netWorth):0;
 
   var totalNetAssets=0;
-  ['liquid','invest','fixed','recv'].forEach(function(k){data[k].items.forEach(function(it){if(it.stat)totalNetAssets+=it.bal;});});
+  ['liquid','invest','fixed','recv'].forEach(function(k){data[k].items.forEach(function(it){if(it.stat)totalNetAssets+=acctVal(it);});});
   data.debt.items.forEach(function(it){if(it.stat)totalNetAssets+=it.bal;});
   var levRatio=totalNetAssets!==0?(totalDebt/Math.abs(totalNetAssets)*100):0;
 
@@ -4056,7 +4057,7 @@ function renderLevSummary(){
   var totalExposure=0,totalMktVal=0;
   data.invest.items.forEach(function(it){
     if(!it.sk||!it.stat) return;
-    var mkt=Math.abs(it.bal);
+    var mkt=acctVal(it);
     var lev=it.sk.leverage||1;
     totalExposure+=mkt*Math.abs(lev);
     totalMktVal+=mkt;
@@ -4121,7 +4122,7 @@ function renderCreditAnalysis(){
     var stocks=getStocksByFund(loan.id);
     var stockMktVal=0,stockCost=0;
     stocks.forEach(function(s){
-      stockMktVal+=Math.abs(s.bal);
+      stockMktVal+=acctVal(s);
       stockCost+=Math.round(s.sk.paid*(s.sk.isUs?st.fxRate:1));
     });
     totalMarketVal+=stockMktVal;
@@ -4205,9 +4206,9 @@ function renderCreditAnalysis(){
 
   // credit asset proportion
   var totalAllAssets=0;
-  ['liquid','invest','fixed','recv'].forEach(function(k){data[k].items.forEach(function(it){if(it.stat&&it.bal>0)totalAllAssets+=it.bal;});});
+  ['liquid','invest','fixed','recv'].forEach(function(k){data[k].items.forEach(function(it){if(it.stat&&acctVal(it)>0)totalAllAssets+=acctVal(it);});});
   var creditAssetVal=0;
-  loans.forEach(function(l){getStocksByFund(l.id).forEach(function(s){creditAssetVal+=Math.abs(s.bal);});});
+  loans.forEach(function(l){getStocksByFund(l.id).forEach(function(s){creditAssetVal+=acctVal(s);});});
   var selfAsset=totalAllAssets-creditAssetVal;
   if(selfAsset<0)selfAsset=0;
   var creditPct=totalAllAssets>0?(creditAssetVal/totalAllAssets*100):0;
@@ -4290,13 +4291,13 @@ function renderPledgeAnalysis(){
         var stk=data.invest.items.find(function(s){return s.id===ps.account_id;});
         if(stk&&stk.sk){
           var prop=stk.sk.shares>0?ps.shares/stk.sk.shares:1;
-          pledgedStocks.push({stk:stk,shares:ps.shares,mktVal:Math.abs(stk.bal)*prop});
+          pledgedStocks.push({stk:stk,shares:ps.shares,mktVal:acctVal(stk)*prop});
         }
       });
     } else {
       (pd.pledged_accounts||[]).forEach(function(aid){
         var stk=data.invest.items.find(function(s){return s.id===aid;});
-        if(stk&&stk.sk) pledgedStocks.push({stk:stk,shares:stk.sk.shares,mktVal:Math.abs(stk.bal)});
+        if(stk&&stk.sk) pledgedStocks.push({stk:stk,shares:stk.sk.shares,mktVal:acctVal(stk)});
       });
     }
     var pledgeMktVal=0;
@@ -4373,7 +4374,7 @@ function renderPledgeAnalysis(){
 
   // pledge asset proportion
   var totalAllAssets=0;
-  ['liquid','invest','fixed','recv'].forEach(function(k){data[k].items.forEach(function(it){if(it.stat&&it.bal>0)totalAllAssets+=it.bal;});});
+  ['liquid','invest','fixed','recv'].forEach(function(k){data[k].items.forEach(function(it){if(it.stat&&acctVal(it)>0)totalAllAssets+=acctVal(it);});});
   var pledgePct=totalAllAssets>0?(totalPledgeAsset/totalAllAssets*100):0;
   var selfAsset=totalAllAssets-totalPledgeAsset;
   if(selfAsset<0)selfAsset=0;
