@@ -1595,7 +1595,11 @@ function submitAddAcct(){
       return Promise.all([loadAccounts(),loadTx()]);
     });
   }).then(function(){
-    renderOverview();renderStocks();renderTx();toast('✓ 已新增 '+name);
+    renderOverview();renderStocks();renderTx();
+    // auto-open the section that received the new account
+    var sec=$('ac-'+key);
+    if(sec&&!sec.classList.contains('open'))sec.classList.add('open');
+    toast('✓ 已新增 '+name);
   });
 }
 $('addAcctBtn').addEventListener('click',function(){addShowStep(1);$('m-addacct').classList.add('on');});
@@ -2324,7 +2328,9 @@ function submitStock(){
       return Promise.all([loadAccounts(),loadTx()]);
     });
   }).then(function(){
-    renderOverview();renderStocks();renderTx();toast('✓ '+tk+' 已新增');
+    renderOverview();renderStocks();renderTx();
+    var sec=$('ac-invest');if(sec&&!sec.classList.contains('open'))sec.classList.add('open');
+    toast('✓ '+tk+' 已新增');
   });
 }
 
