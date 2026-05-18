@@ -361,7 +361,7 @@ function openUserEdit(uid){
     $('ue-sel-avatar').innerHTML=av;
   }
   $('ue-sel-avatar').dataset.val=av;
-  $('ue-del-wrap').style.display=(uid===1)?'none':'block';
+  $('ue-del-wrap').style.display='block';
   renderAvatarGrid(av);
   var tc=localStorage.getItem('ft_theme_'+uid)||'';
   renderThemeGrid(tc);
@@ -473,26 +473,40 @@ function submitUserEdit(){
 }
 function deleteUserConfirm(){
   var uid=parseInt($('ue-uid').value);
-  if(!uid||uid===1)return;
+  if(!uid)return;
   var u=st.users.find(function(x){return x.id===uid;});
   var name=u?u.name:'';
-  // show inline confirm
+  var isSelf=(uid===st.userId);
+  var msg=isSelf?'確定刪除帳號「'+name+'」？所有帳戶、交易紀錄、類別資料將永久刪除並登出！':'確定刪除「'+name+'」？所有資料將永久刪除！';
   var wrap=$('ue-del-wrap');
   wrap.innerHTML='<div class="ue-del-confirm">'
-    +'<div style="font-size:13px;color:#f25c5c;margin-bottom:8px">確定刪除「'+name+'」？所有資料將永久刪除！</div>'
+    +'<div style="font-size:13px;color:#f25c5c;margin-bottom:8px">'+msg+'</div>'
     +'<div style="display:flex;gap:8px">'
     +'<button class="ue-btn ue-btn-cancel" onclick="openUserEdit('+uid+')">取消</button>'
     +'<button class="ue-btn ue-btn-danger" onclick="doDeleteUser('+uid+')">確認刪除</button>'
     +'</div></div>';
 }
 function doDeleteUser(uid){
-  sb.from('users').delete().eq('id',uid).then(function(){
+  // Delete all user data: transactions, accounts, categories, then user record
+  Promise.all([
+    sb.from('transactions').delete().eq('user_id',uid),
+    sb.from('accounts').delete().eq('user_id',uid),
+    sb.from('categories').delete().eq('user_id',uid)
+  ]).then(function(){
+    return sb.from('users').delete().eq('id',uid);
+  }).then(function(){
     localStorage.removeItem('ft_theme_'+uid);
     $('m-user-edit').classList.remove('on');
-    if(st.userId===uid){st.userId=1;localStorage.setItem('ft_uid','1');}
-    loadUsers();
-    if(st.userId===1) loadAll().then(function(){renderOverview();renderStocks();renderTx();renderAnalysis();updateHero();});
-    toast('已刪除使用者');
+    if(st.userId===uid){
+      // Deleted own account - clear state and reload
+      localStorage.removeItem('ft_uid');
+      st.userId=null;
+      toast('帳號已刪除');
+      setTimeout(function(){location.reload();},600);
+    } else {
+      loadUsers();
+      toast('已刪除使用者');
+    }
   });
 }
 
@@ -2010,14 +2024,16 @@ function renderSkTxHistory(){
   }
 }
 function _renderSkTxRows(el,badge,skTxs){
-  if(badge)badge.textContent=skTxs.length;
-  if(skTxs.length===0){
+  // Merge related stock transactions into single operations
+  var merged=_mergeStockTxs(skTxs);
+  if(badge)badge.textContent=merged.length;
+  if(merged.length===0){
     el.innerHTML='<div class="sktx-empty">本月尚無交易紀錄</div>';
     return;
   }
   // group by date
   var groups={},order=[];
-  skTxs.forEach(function(t){
+  merged.forEach(function(t){
     if(!groups[t.date]){groups[t.date]=[];order.push(t.date);}
     groups[t.date].push(t);
   });
@@ -2027,43 +2043,116 @@ function _renderSkTxRows(el,badge,skTxs){
     var days=['日','一','二','三','四','五','六'];
     html+='<div class="sktx-day">'+d.slice(5)+' 週'+days[dd.getDay()]+'</div>';
     groups[d].forEach(function(t){
-      var ticker=t.note||t.name;
-      // extract ticker from note or name
-      var parts=t.name.split(' ');
-      var tkr=parts.length>1?parts[0]:t.name;
-      // determine tag
-      var isBuy=(t.cat==='買入股票'||t.cat==='購入股票');
-      var isSell=(t.cat==='賣出股票'||t.cat==='賣股入帳');
-      var isInit=(t.cat==='初始餘額');
-      var tagCls=isBuy?'buy':isSell?'sell':'init';
-      var tagTxt=isBuy?'買入':isSell?'賣出':'建倉';
-      var amtCls=isBuy?'g':isSell?'r':'b';
-      // try parse shares from note
-      var sharesText='';
-      if(t.note){
-        var sm=t.note.match(/(\d+(?:\.\d+)?)\s*股/);
-        if(sm)sharesText=sm[1]+'股';
-      }
-      // find account color
+      var ticker=t.ticker||t.name;
       var dot='var(--green)';
       var allAccts=getAccountsList();
       for(var i=0;i<allAccts.length;i++){
-        if(allAccts[i].id===t.account_id){dot=allAccts[i].dot;tkr=allAccts[i].name;break;}
+        if(allAccts[i].id===t.stockAcctId){dot=allAccts[i].dot;break;}
       }
-      var absAmt=fmtN(Math.round(Math.abs(t.amt)));
-      var amtStr=t.amt>=0?'+'+absAmt:'-'+absAmt;
+      var tagCls=t.action==='buy'?'buy':t.action==='sell'?'sell':'init';
+      var tagTxt=t.action==='buy'?'買入':t.action==='sell'?'賣出':'建倉';
+      var absAmt=fmtN(Math.round(Math.abs(t.totalAmt)));
+      var amtStr=t.action==='sell'?'+'+absAmt:'-'+absAmt;
+      var amtCls=t.action==='sell'?'g':'b';
+      var detail='';
+      if(t.shares) detail+=t.shares+'股';
+      if(t.srcName) detail+=(detail?'．':'')+t.srcName;
       html+='<div class="sktx-row">'
-        +'<div class="sktx-ico" style="background:'+dot+';color:#fff">'+tkr.slice(0,3)+'</div>'
+        +'<div class="sktx-ico" style="background:'+dot+';color:#fff">'+ticker.slice(0,3)+'</div>'
         +'<div class="sktx-info">'
-        +'<span class="sktx-ticker">'+tkr+'</span>'
+        +'<span class="sktx-ticker">'+ticker+'</span>'
         +'<span class="sktx-tag '+tagCls+'">'+tagTxt+'</span>'
-        +(sharesText?'<span class="sktx-shares">'+sharesText+'</span>':'')
+        +(detail?'<span class="sktx-shares">'+detail+'</span>':'')
         +'</div>'
         +'<div class="sktx-amt '+amtCls+'">'+amtStr+'</div>'
         +'</div>';
     });
   });
   el.innerHTML=html;
+}
+function _mergeStockTxs(txList){
+  // Group buy/sell pairs: "買入股票" on stock acct + "購入股票" on source acct → one entry
+  // Similarly for sell: "賣出股票" on stock acct + "賣股入帳" on dest acct → one entry
+  var used={},result=[];
+  // Index by date for pairing
+  var byDate={};
+  txList.forEach(function(t,i){
+    if(!byDate[t.date])byDate[t.date]=[];
+    byDate[t.date].push({t:t,i:i});
+  });
+  txList.forEach(function(t,i){
+    if(used[i])return;
+    // 初始餘額 (init) - standalone, show as 建倉
+    if(t.cat==='初始餘額'){
+      used[i]=true;
+      var ticker=_extractTicker(t);
+      var acct=allAccounts.find(function(a){return a.id===t.account_id;});
+      var shares='';
+      if(t.note){var sm=t.note.match(/([\d.]+)\s*股/);if(sm)shares=sm[1];}
+      result.push({date:t.date,ticker:acct?acct.name:ticker,action:'init',shares:shares,totalAmt:Math.abs(t.amt),stockAcctId:t.account_id,srcName:''});
+      // Mark paired "購入股票" on same date with same ticker
+      if(byDate[t.date]){
+        byDate[t.date].forEach(function(o){
+          if(o.i!==i&&!used[o.i]&&o.t.cat==='購入股票'&&_extractTicker(o.t)===ticker){
+            used[o.i]=true;
+          }
+        });
+      }
+      return;
+    }
+    // 買入股票 - find paired 購入股票
+    if(t.cat==='買入股票'){
+      used[i]=true;
+      var ticker=_extractTicker(t);
+      var shares='';
+      if(t.note){var sm=t.note.match(/\+?([\d.]+)\s*股/);if(sm)shares=sm[1];}
+      var acct=allAccounts.find(function(a){return a.id===t.account_id;});
+      var srcName='';
+      // find paired 購入股票 (source account deduction)
+      if(byDate[t.date]){
+        byDate[t.date].forEach(function(o){
+          if(o.i!==i&&!used[o.i]&&o.t.cat==='購入股票'&&_extractTicker(o.t)===ticker){
+            used[o.i]=true;
+            var sa=allAccounts.find(function(a){return a.id===o.t.account_id;});
+            if(sa)srcName=sa.name;
+          }
+        });
+      }
+      result.push({date:t.date,ticker:acct?acct.name:ticker,action:'buy',shares:shares,totalAmt:Math.abs(t.amt),stockAcctId:t.account_id,srcName:srcName});
+      return;
+    }
+    // 賣出股票 - find paired 賣股入帳
+    if(t.cat==='賣出股票'){
+      used[i]=true;
+      var ticker=_extractTicker(t);
+      var shares='';
+      if(t.note){var sm=t.note.match(/-?([\d.]+)\s*股/);if(sm)shares=sm[1];}
+      var acct=allAccounts.find(function(a){return a.id===t.account_id;});
+      var destName='';
+      if(byDate[t.date]){
+        byDate[t.date].forEach(function(o){
+          if(o.i!==i&&!used[o.i]&&o.t.cat==='賣股入帳'&&_extractTicker(o.t)===ticker){
+            used[o.i]=true;
+            var da=allAccounts.find(function(a){return a.id===o.t.account_id;});
+            if(da)destName=da.name;
+          }
+        });
+      }
+      result.push({date:t.date,ticker:acct?acct.name:ticker,action:'sell',shares:shares,totalAmt:Math.abs(t.amt),stockAcctId:t.account_id,srcName:destName});
+      return;
+    }
+    // leftover unpaired entries (購入股票/賣股入帳 without match)
+    if(t.cat==='購入股票'||t.cat==='賣股入帳'){
+      used[i]=true;
+      // already consumed by pairing above, skip
+      return;
+    }
+  });
+  return result;
+}
+function _extractTicker(t){
+  if(t.note){var m=t.note.match(/^([A-Z0-9]+)/);if(m)return m[1];}
+  return t.name||'';
 }
 
 function calcSkFee(){
@@ -2213,6 +2302,43 @@ function renderTx(){
       }
     }
   });
+  // Pair stock buy transactions: 買入股票/初始餘額 on stock acct + 購入股票 on source acct
+  var stockBuyCats=['買入股票','初始餘額'];
+  txs.forEach(function(t,i){
+    if(stockBuyCats.indexOf(t.cat)>=0&&!skipIdx[i]){
+      var ticker=t.note?t.note.match(/^([A-Z0-9]+)/):null;
+      var tkr=ticker?ticker[1]:'';
+      for(var j=0;j<txs.length;j++){
+        if(j!==i&&!skipIdx[j]&&txs[j].cat==='購入股票'&&txs[j].date===t.date){
+          var tkr2=txs[j].note?txs[j].note.match(/^([A-Z0-9]+)/):null;
+          if(tkr&&tkr2&&tkr===tkr2[1]){
+            t._stockSrc=txs[j].account_id;
+            t._stockSrcAmt=txs[j].amt;
+            skipIdx[j]=true;
+            break;
+          }
+        }
+      }
+    }
+  });
+  // Pair stock sell transactions: 賣出股票 on stock acct + 賣股入帳 on dest acct
+  txs.forEach(function(t,i){
+    if(t.cat==='賣出股票'&&!skipIdx[i]){
+      var ticker=t.note?t.note.match(/^([A-Z0-9]+)/):null;
+      var tkr=ticker?ticker[1]:'';
+      for(var j=0;j<txs.length;j++){
+        if(j!==i&&!skipIdx[j]&&txs[j].cat==='賣股入帳'&&txs[j].date===t.date){
+          var tkr2=txs[j].note?txs[j].note.match(/^([A-Z0-9]+)/):null;
+          if(tkr&&tkr2&&tkr===tkr2[1]){
+            t._stockDest=txs[j].account_id;
+            t._stockDestAmt=txs[j].amt;
+            skipIdx[j]=true;
+            break;
+          }
+        }
+      }
+    }
+  });
   txs.forEach(function(t,i){if(!skipIdx[i]){if(!groups[t.date])groups[t.date]=[];groups[t.date].push(t);}});
   Object.keys(groups).sort(function(a,b){return b.localeCompare(a);}).forEach(function(date){
     var d=new Date(date+'T00:00:00'),tot=groups[date].reduce(function(s,t){return s+t.amt;},0);
@@ -2222,6 +2348,8 @@ function renderTx(){
     groups[date].forEach(function(t){
       var idx=txs.indexOf(t),pos=t.amt>=0;
       var isTransfer=(t.cat==='轉帳'&&t._transferTo);
+      var isStockBuy=((t.cat==='買入股票'||t.cat==='初始餘額')&&t.account_id);
+      var isStockSell=(t.cat==='賣出股票'&&t.account_id);
       if(isTransfer){
         var fromName=getAcctName(t.account_id)||'?';
         var toName=getAcctName(t._transferTo)||'?';
@@ -2236,6 +2364,35 @@ function renderTx(){
         html+='<div class="tx-edit" id="te-'+idx+'">';
         html+='<div class="eact">';
         html+='<button class="edel" onclick="delTransferPair(event,'+idx+')">刪除轉帳</button>';
+        html+='</div></div>';
+      } else if(isStockBuy||isStockSell){
+        // Merged stock transaction display
+        var stTicker=t.note?(t.note.match(/^([A-Z0-9]+)/)||[])[1]||t.name:t.name;
+        var stShares='';if(t.note){var sm=t.note.match(/[+-]?([\d.]+)\s*股/);if(sm)stShares=sm[1]+'股';}
+        var stAcctName=getAcctName(t.account_id)||stTicker;
+        var stLabel,stIcon,stMeta='';
+        if(isStockBuy){
+          stLabel=t.cat==='初始餘額'?'建倉':'買入';
+          stIcon='📈';
+          if(t._stockSrc) stMeta=stAcctName+(stShares?' · '+stShares:'')+' · '+getAcctName(t._stockSrc);
+          else stMeta=stAcctName+(stShares?' · '+stShares:'');
+        } else {
+          stLabel='賣出';stIcon='📉';
+          if(t._stockDest) stMeta=stAcctName+(stShares?' · '+stShares:'')+' → '+getAcctName(t._stockDest);
+          else stMeta=stAcctName+(stShares?' · '+stShares:'');
+        }
+        var stAmt=Math.abs(t.amt);
+        var stPos=isStockSell;
+        html+='<div class="tx-row" id="tr-'+idx+'" onclick="toggleTxEdit('+idx+')">';
+        html+='<div class="tx-emo" style="background:'+(stPos?'var(--gbg)':'var(--bg3)')+'">'+stIcon+'</div>';
+        html+='<div class="tx-info"><div class="tx-nm">'+stLabel+' '+stTicker+'</div>';
+        html+='<div class="tx-meta">'+stMeta+'</div></div>';
+        html+='<div style="display:flex;align-items:center;gap:8px">';
+        html+='<div class="tx-val '+(stPos?'g':'n')+'">'+(stPos?'+':'-')+fmtN(cvt(stAmt))+'</div>';
+        html+='<div class="txchev" id="tc-'+idx+'"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></div></div></div>';
+        html+='<div class="tx-edit" id="te-'+idx+'">';
+        html+='<div class="eact">';
+        html+='<button class="edel" onclick="delTx(event,'+idx+')">刪除</button>';
         html+='</div></div>';
       } else {
         var str=(pos?'+':'')+cvt(t.amt).toLocaleString();
@@ -2272,7 +2429,7 @@ function renderTx(){
   if(!html)html='<div style="text-align:center;color:var(--fg3);padding:48px 0;font-size:14px">本月尚無記錄</div>';
   $('tx-wrap').innerHTML=html;
   st.expandedTx=null;
-  var nonTransfer=txs.filter(function(t){return t.cat!=='轉帳';});
+  var nonTransfer=txs.filter(function(t,i){return t.cat!=='轉帳'&&!skipIdx[i];});
   var inc=nonTransfer.filter(function(t){return t.amt>0;}).reduce(function(s,t){return s+t.amt;},0);
   var exp=nonTransfer.filter(function(t){return t.amt<0;}).reduce(function(s,t){return s+t.amt;},0);
   var bal=inc+exp;
@@ -3271,13 +3428,18 @@ function _drawChart(pts,labels,svgId,axId,ttlId){
   } else {
     pathD='M'+sx(0).toFixed(1)+' '+sy(pts[0]).toFixed(1);
     for(var ci=0;ci<n-1;ci++){
-      var x0=sx(Math.max(ci-1,0)),y0=sy(pts[Math.max(ci-1,0)]);
       var x1=sx(ci),y1=sy(pts[ci]);
       var x2=sx(ci+1),y2=sy(pts[ci+1]);
+      // monotone clamped Catmull-Rom: prevent overshoot
+      var x0=sx(Math.max(ci-1,0)),y0=sy(pts[Math.max(ci-1,0)]);
       var x3=sx(Math.min(ci+2,n-1)),y3=sy(pts[Math.min(ci+2,n-1)]);
-      var cp1x=(x1+(x2-x0)/6).toFixed(1),cp1y=(y1+(y2-y0)/6).toFixed(1);
-      var cp2x=(x2-(x3-x1)/6).toFixed(1),cp2y=(y2-(y3-y1)/6).toFixed(1);
-      pathD+=' C'+cp1x+','+cp1y+' '+cp2x+','+cp2y+' '+sx(ci+1).toFixed(1)+','+sy(pts[ci+1]).toFixed(1);
+      var cp1x=x1+(x2-x0)/6,cp1y=y1+(y2-y0)/6;
+      var cp2x=x2-(x3-x1)/6,cp2y=y2-(y3-y1)/6;
+      // clamp control points to prevent dips/overshoots
+      var minY=Math.min(y1,y2),maxY=Math.max(y1,y2);
+      cp1y=Math.max(minY,Math.min(maxY,cp1y));
+      cp2y=Math.max(minY,Math.min(maxY,cp2y));
+      pathD+=' C'+cp1x.toFixed(1)+','+cp1y.toFixed(1)+' '+cp2x.toFixed(1)+','+cp2y.toFixed(1)+' '+x2.toFixed(1)+','+y2.toFixed(1);
     }
   }
   var areaD=pathD+' L'+sx(n-1).toFixed(1)+' '+H+' L'+sx(0).toFixed(1)+' '+H+'Z';
