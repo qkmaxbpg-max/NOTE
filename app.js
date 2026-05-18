@@ -631,8 +631,8 @@ function api(method,url,body){
   // POST /api/transactions
   if(method==='POST'&&url==='/api/transactions'){
     var txRow={user_id:st.userId,date:body.date,name:body.name,category:body.category,amount:body.amount,note:body.note||'',icon:body.icon||'',recurring:!!body.recurring,account_id:body.account_id||null};
-    // Update account balance
-    if(body.account_id){
+    // Update account balance (skip if _skipBal flag is set)
+    if(body.account_id&&!body._skipBal){
       sb.from('accounts').select('balance').eq('id',body.account_id).single().then(function(r){
         if(r.data) sb.from('accounts').update({balance:r.data.balance+body.amount}).eq('id',body.account_id).then(function(){});
       });
@@ -1093,8 +1093,8 @@ function ctxAction(act){
   else if(act==='delete'){
     if(confirm('確定刪除「'+it.name+'」？')){
       api('DELETE','/api/accounts/'+it.id).then(function(){
-        data[key].items.splice(idx,1);renderOverview();renderStocks();toast('已刪除');
-      });
+        return Promise.all([loadAccounts(),loadTx()]);
+      }).then(function(){renderOverview();renderStocks();renderTx();toast('已刪除');});
     }
   }
   else if(act==='payoff'){openPayoff(key,idx);}
@@ -1580,7 +1580,7 @@ function submitAddAcct(){
       promises.push(api('POST','/api/transactions',{
         date:new Date().toISOString().slice(0,10),
         name:'初始餘額',category:'初始餘額',amount:finalBal,
-        note:initNote,icon:'📥',recurring:false,account_id:newId
+        note:initNote,icon:'📥',recurring:false,account_id:newId,_skipBal:true
       }));
     }
     // stock purchase: deduct from source account
@@ -1605,7 +1605,7 @@ function submitAddAcct(){
         promises.push(api('POST','/api/transactions',{
           date:new Date().toISOString().slice(0,10),
           name:'貸款手續費',category:'財務費用',amount:-_loanFee,
-          note:name,icon:'💸',recurring:false,account_id:newId
+          note:name,icon:'💸',recurring:false,account_id:newId,_skipBal:true
         }));
       }
     }
@@ -1845,8 +1845,9 @@ function submitDelAcct(){
   if(!confirm('確定刪除？'))return;
   var it=data[st.editKey].items[st.editIdx];
   api('DELETE','/api/accounts/'+it.id).then(function(){
-    data[st.editKey].items.splice(st.editIdx,1);
-    $('m-edit').classList.remove('on');renderOverview();renderStocks();toast('已刪除');
+    return Promise.all([loadAccounts(),loadTx()]);
+  }).then(function(){
+    $('m-edit').classList.remove('on');renderOverview();renderStocks();renderTx();toast('已刪除');
   });
 }
 // pledge stock selector
@@ -2814,7 +2815,7 @@ function submitTxBuy(){
     promises.push(sb.from('accounts').update({balance:nMkt,stock_data:uSk}).eq('id',existing.id));
     promises.push(api('POST','/api/transactions',{
       date:txDate,name:'買入股票',category:'買入股票',amount:-Math.round(paidTWD),
-      note:tk+' +'+sh+'股 @'+pr,icon:'📈',recurring:false,account_id:existing.id
+      note:tk+' +'+sh+'股 @'+pr,icon:'📈',recurring:false,account_id:existing.id,_skipBal:true
     }));
     if(srcId){
       promises.push(api('POST','/api/transactions',{
@@ -2839,7 +2840,7 @@ function submitTxBuy(){
       if(newId){
         promises.push(api('POST','/api/transactions',{
           date:txDate,name:'買入股票',category:'買入股票',amount:-Math.round(paidTWD),
-          note:tk+' +'+sh+'股 @'+pr,icon:'📈',recurring:false,account_id:newId
+          note:tk+' +'+sh+'股 @'+pr,icon:'📈',recurring:false,account_id:newId,_skipBal:true
         }));
       }
       if(srcId&&newId){
@@ -2942,7 +2943,7 @@ function submitTxSell(){
   // sell transaction on the stock account
   promises.push(api('POST','/api/transactions',{
     date:txDate,name:'賣出股票',category:'賣出股票',amount:Math.round(recvTWD),
-    note:tk+' -'+sh+'股 @'+pr,icon:'📉',recurring:false,account_id:it.id
+    note:tk+' -'+sh+'股 @'+pr,icon:'📉',recurring:false,account_id:it.id,_skipBal:true
   }));
   // deposit to destination account
   if(destId){
