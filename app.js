@@ -1601,13 +1601,12 @@ function submitAddAcct(){
         note:name+(_loanFee?' (扣手續費 '+_loanFee.toLocaleString()+')':''),
         icon:'💰',recurring:false,account_id:_disburseId
       }));
-        if(_loanFee>0){
-          promises.push(api('POST','/api/transactions',{
-            date:new Date().toISOString().slice(0,10),
-            name:'貸款手續費',category:'財務費用',amount:-_loanFee,
-            note:name,icon:'💸',recurring:false,account_id:newId
-          }));
-        }
+      if(_loanFee>0){
+        promises.push(api('POST','/api/transactions',{
+          date:new Date().toISOString().slice(0,10),
+          name:'貸款手續費',category:'財務費用',amount:-_loanFee,
+          note:name,icon:'💸',recurring:false,account_id:newId
+        }));
       }
     }
     return Promise.all(promises).then(function(){
