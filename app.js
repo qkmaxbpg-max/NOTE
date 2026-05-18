@@ -555,7 +555,10 @@ function api(method,url,body){
   // POST /api/accounts
   if(method==='POST'&&url==='/api/accounts'){
     var row={user_id:st.userId,category:body.category,name:body.name,type:body.type,balance:body.balance,description:body.description||'',dot_color:body.dot_color||'#1db954',stat:body.stat!==false,group_name:body.group_name||null,stock_data:body.stock_data||null,loan_data:body.loan_data||null};
-    return sb.from('accounts').insert(row).select().single().then(function(res){return res.data||{};});
+    return sb.from('accounts').insert(row).select().single().then(function(res){
+      if(res.error){console.error('Account insert error:',res.error);toast('新增失敗: '+res.error.message);return{};}
+      return res.data||{};
+    });
   }
   // PUT /api/accounts/:id
   m=url.match(/^\/api\/accounts\/(\d+)$/);
@@ -1541,8 +1544,9 @@ function submitAddAcct(){
   var _skSrcId=payload._skSrcId;var _paidTWD=payload._paidTWD||0;
   delete payload._disburseId;delete payload._loanFee;delete payload._skSrcId;delete payload._paidTWD;
   api('POST','/api/accounts',payload).then(function(newAcct){
+    if(!newAcct||!newAcct.id){console.error('Failed to create account, response:',newAcct);toast('新增帳戶失敗');return;}
     var finalBal=payload.balance;
-    var newId=newAcct?newAcct.id:null;
+    var newId=newAcct.id;
     var promises=[];
     // auto transaction: initial balance
     if(finalBal!==0&&newId){
@@ -4336,22 +4340,44 @@ function renderPledgeAnalysis(){
 // ── init: load from API then render ──
 // apply theme early before API returns
 (function(){var tc=localStorage.getItem('ft_theme_'+st.userId);if(tc)document.documentElement.style.setProperty('--green',tc);})();
-loadUsers();
-loadAll().then(function(){
-  renderOverview();
-  renderStocks();
-  renderTx();
-  renderAnalysis();
-  $('f-date').value=new Date().toISOString().slice(0,10);
-  // auto-refresh stock prices & fx rate on startup
-  refreshPrices(true);
-  api('POST','/api/loans/auto-pay',{}).then(function(res){
-    if(res.created&&res.created.length>0){
-      loadAll().then(function(){renderOverview();renderTx();});
-      res.created.forEach(function(c){
-        toast('已自動記錄 '+c.account+' 第'+c.period+'期還款');
-      });
+loadUsers().then(function(){
+  // Ensure userId points to a valid user; if not, pick the first available or create one
+  var fixUser;
+  if(st.users.length===0){
+    fixUser=sb.from('users').insert({name:'我'}).select().single().then(function(res){
+      if(res.data){
+        st.userId=res.data.id;
+        localStorage.setItem('ft_uid',res.data.id);
+        st.users=[res.data];
+        renderUserList();
+      }
+    });
+  } else {
+    var valid=st.users.find(function(u){return u.id===st.userId;});
+    if(!valid){
+      st.userId=st.users[0].id;
+      localStorage.setItem('ft_uid',st.userId);
+      renderUserList();
     }
+    fixUser=Promise.resolve();
+  }
+  return fixUser.then(function(){
+    return loadAll();
+  }).then(function(){
+    renderOverview();
+    renderStocks();
+    renderTx();
+    renderAnalysis();
+    $('f-date').value=new Date().toISOString().slice(0,10);
+    refreshPrices(true);
+    api('POST','/api/loans/auto-pay',{}).then(function(res){
+      if(res.created&&res.created.length>0){
+        loadAll().then(function(){renderOverview();renderTx();});
+        res.created.forEach(function(c){
+          toast('已自動記錄 '+c.account+' 第'+c.period+'期還款');
+        });
+      }
+    });
   });
 });
 
