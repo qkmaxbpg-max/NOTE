@@ -7,6 +7,17 @@ var MONTHS=['01','02','03','04','05','06','07','08','09','10','11','12'];
 var DOTS=['#1db954','#3d8ef8','#f5a623','#a78bfa','#2dd4bf','#f25c5c','#34d399','#fb923c'];
 var DEBT_TYPES=['信用卡','信用貸款','股票質押','房貸','車貸','其他貸款','應付款','其他負債'];
 var LOAN_TYPES=['信用貸款','股票質押','房貸','車貸','其他貸款'];
+var CCYS=[
+  {code:'TWD',name:'台幣',sym:'NT$'},{code:'USD',name:'美元',sym:'US$'},
+  {code:'JPY',name:'日圓',sym:'¥'},{code:'EUR',name:'歐元',sym:'€'},
+  {code:'CNY',name:'人民幣',sym:'¥'},{code:'HKD',name:'港幣',sym:'HK$'},
+  {code:'GBP',name:'英鎊',sym:'£'},{code:'KRW',name:'韓元',sym:'₩'},
+  {code:'SGD',name:'新幣',sym:'S$'},{code:'AUD',name:'澳幣',sym:'A$'},
+  {code:'CAD',name:'加幣',sym:'C$'},{code:'CHF',name:'瑞郎',sym:'CHF'},
+  {code:'THB',name:'泰銖',sym:'฿'},{code:'VND',name:'越南盾',sym:'₫'},
+  {code:'MYR',name:'馬幣',sym:'RM'},{code:'PHP',name:'披索',sym:'₱'}
+];
+var _fxCache={};
 var L3_TYPES={
   liquid:['現金','電子錢包','其他'],
   invest:['股票','加密貨幣','貴金屬','其他'],
@@ -48,6 +59,18 @@ function yfQuote(symbol){
     return null;
   }).catch(function(){return null;});
 }
+function fetchFxRate(ccy){
+  if(ccy==='TWD')return Promise.resolve(1);
+  if(ccy==='USD'&&st.fxRate)return Promise.resolve(st.fxRate);
+  if(_fxCache[ccy])return Promise.resolve(_fxCache[ccy]);
+  return sb.rpc('yahoo_quote',{symbol:ccy+'TWD=X'}).then(function(res){
+    if(res.data&&res.data.price>0){_fxCache[ccy]=res.data.price;return res.data.price;}
+    return sb.rpc('yahoo_quote',{symbol:ccy+'USD=X'}).then(function(r2){
+      if(r2.data&&r2.data.price>0){var rate=r2.data.price*st.fxRate;_fxCache[ccy]=rate;return rate;}
+      return null;
+    });
+  }).catch(function(){return null;});
+}
 function refreshPrices(silent){
   var btn=$('sk-refresh');
   if(btn){btn.disabled=true;btn.textContent='更新中…';}
@@ -67,13 +90,17 @@ function refreshPrices(silent){
   return sb.rpc('yahoo_batch_quotes',{symbols:symbols}).then(function(res){
     var prices=res.data||{};
     if(prices['TWD=X']) st.fxRate=prices['TWD=X'];
-    // update non-stock USD account balances with new FX rate
+    // update all non-stock foreign currency accounts
     allAccounts.forEach(function(it){
-      if(it.ccy==='USD'&&!(it.sk&&it.sk.ticker)&&it.sk&&it.sk.originalBalance){
-        var newBal=Math.round(it.sk.originalBalance*st.fxRate);
-        if(it.category==='debt') newBal=-Math.abs(newBal);
-        it.bal=newBal;
-        sb.from('accounts').update({balance:newBal}).eq('id',it.id).then(function(){});
+      if(it.ccy&&it.ccy!=='TWD'&&!(it.sk&&it.sk.ticker)){
+        var origBal=it.sk&&it.sk.originalBalance;
+        if(origBal!=null){
+          var rate=(it.ccy==='USD')?st.fxRate:(_fxCache[it.ccy]||it.sk.fxRate||1);
+          var newBal=Math.round(origBal*rate);
+          if(it.category==='debt') newBal=-Math.abs(newBal);
+          it.bal=newBal;
+          sb.from('accounts').update({balance:newBal}).eq('id',it.id).then(function(){});
+        }
       }
     });
     var updated=[];
@@ -1180,11 +1207,14 @@ function addGoS3(type){
   $('add-stock-f').style.display=isStock?'block':'none';
   $('add-bal-wrap').style.display=isStock?'none':'';// hide balance for stocks
   $('add-ccy-wrap').style.display=isStock?'none':'';
-  $('add-ccy').value='TWD';onAddCcyChange();
+  $('add-ccy').value='TWD';renderCcyChips('add');pickCcy('add','TWD');
   if(isStock) clearStockSelection('add');
   $('add-debt-f').style.display=(LOAN_TYPES.indexOf(type)>=0)?'block':'none';
   $('add-pledge-f').style.display=(type==='股票質押')?'block':'none';
   $('add-fee-box').style.display='none';$('add-loan-box').style.display='none';
+  var showDisburse=LOAN_TYPES.indexOf(type)>=0&&type!=='股票質押';
+  if($('add-loan-disburse'))$('add-loan-disburse').style.display=showDisburse?'block':'none';
+  if(showDisburse){$('add-disburse-id').value='';$('add-disburse-btn').textContent='選擇入帳帳戶';$('add-disburse-btn').classList.remove('selected');$('add-loan-fee').value='';$('add-disburse-box').style.display='none';}
   if(LOAN_TYPES.indexOf(type)>=0){
     $('add-repay-type').value='本息平均攤還';
     $('add-rate').value='';$('add-months').value='';$('add-loan-start').value='';
@@ -1194,17 +1224,43 @@ function addGoS3(type){
   if(type==='股票質押') renderPledgeStocksSelector('add',[]);
   addShowStep(3);
 }
-function onAddCcyChange(){
-  var ccy=$('add-ccy').value;
-  var label=ccy==='USD'?'餘額（US$）':'餘額（NT$）';
-  var balLabel=$('add-bal-wrap');
-  if(balLabel){var lbl=balLabel.querySelector('label');if(lbl)lbl.textContent=label;}
+function renderCcyChips(prefix){
+  var container=$(prefix+'-ccy-chips');if(!container)return;
+  var current=$(prefix+'-ccy').value||'TWD';
+  var html='';
+  CCYS.forEach(function(c){
+    html+='<button class="ccy-chip'+(c.code===current?' on':'')+'" onclick="pickCcy(\''+prefix+'\',\''+c.code+'\')">'+c.code+'<span style="font-family:var(--font);margin-left:2px;font-size:10px;opacity:.6">'+c.name+'</span></button>';
+  });
+  container.innerHTML=html;
 }
-function onEditCcyChange(){
-  var ccy=$('edit-ccy').value;
-  var label=ccy==='USD'?'餘額（US$）':'餘額（NT$）';
-  var balLabel=$('edit-bal-wrap');
-  if(balLabel){var lbl=balLabel.querySelector('label');if(lbl)lbl.textContent=label;}
+function pickCcy(prefix,code){
+  $(prefix+'-ccy').value=code;
+  var chips=$(prefix+'-ccy-chips');
+  if(chips)chips.querySelectorAll('.ccy-chip').forEach(function(c){c.classList.toggle('on',c.textContent.indexOf(code)===0);});
+  var ccyObj=CCYS.find(function(c){return c.code===code;})||{sym:code};
+  var balWrap=$(prefix+'-bal-wrap');
+  if(balWrap){var lbl=balWrap.querySelector('label');if(lbl)lbl.textContent='餘額（'+ccyObj.sym+'）';}
+  var fxEl=$(prefix+'-ccy-fx');
+  if(code==='TWD'){if(fxEl)fxEl.style.display='none';return;}
+  if(fxEl){fxEl.textContent='匯率載入中…';fxEl.style.display='block';}
+  fetchFxRate(code).then(function(rate){
+    if(!fxEl)return;
+    if(rate){
+      var balVal=parseFloat($(prefix+'-bal').value)||0;
+      var twdAmt=Math.round(balVal*rate);
+      fxEl.innerHTML='1 '+code+' ≈ '+rate.toFixed(2)+' TWD'+(balVal?' → <b>NT$ '+twdAmt.toLocaleString()+'</b>':'');
+    } else {fxEl.textContent='無法取得 '+code+' 匯率';}
+    fxEl.style.display='block';
+  });
+}
+function updateCcyPreview(prefix){
+  var ccy=$(prefix+'-ccy').value;if(ccy==='TWD')return;
+  var fxEl=$(prefix+'-ccy-fx');
+  var rate=_fxCache[ccy]||(ccy==='USD'?st.fxRate:null);
+  if(!fxEl||!rate)return;
+  var balVal=parseFloat($(prefix+'-bal').value)||0;
+  var twdAmt=Math.round(balVal*rate);
+  fxEl.innerHTML='1 '+ccy+' ≈ '+rate.toFixed(2)+' TWD'+(balVal?' → <b>NT$ '+twdAmt.toLocaleString()+'</b>':'');
 }
 function onRepayTypeChange(){
   var type=$('add-repay-type').value;
@@ -1277,6 +1333,16 @@ function calcAddLoan(){
   $('add-total-int').textContent='NT$ '+Math.round(totalInt).toLocaleString();
   $('add-loan-box').style.display='block';
 }
+function calcLoanDisburse(){
+  var bal=parseFloat($('add-bal').value)||0;
+  var fee=parseFloat($('add-loan-fee').value)||0;
+  var net=bal-fee;
+  if(!bal){if($('add-disburse-box'))$('add-disburse-box').style.display='none';return;}
+  $('add-dis-amt').textContent='NT$ '+Math.round(bal).toLocaleString();
+  $('add-dis-fee').textContent='− NT$ '+Math.round(fee).toLocaleString();
+  $('add-dis-net').textContent='NT$ '+Math.round(net).toLocaleString();
+  $('add-disburse-box').style.display='block';
+}
 function submitAddAcct(){
   var name=$('add-name').value.trim(),bal=parseFloat($('add-bal').value)||0,desc=$('add-desc').value.trim();
   var stat=$('add-stat-tog').classList.contains('on'),key=st.addL1,type=st.addL3;
@@ -1284,9 +1350,10 @@ function submitAddAcct(){
   var dot=DOTS[data[key].items.length%DOTS.length],sign=(key==='debt')?-1:1;
   var payload={category:key,name:name,type:type,balance:sign*Math.abs(bal),description:desc,dot_color:dot,stat:stat};
   var addCcy=$('add-ccy').value;
-  if(addCcy==='USD'&&type!=='股票'){
-    payload.balance=sign*Math.round(Math.abs(bal)*st.fxRate);
-    payload.stock_data={currency:'USD',originalBalance:bal};
+  if(addCcy!=='TWD'&&type!=='股票'){
+    var fxRate=_fxCache[addCcy]||(addCcy==='USD'?st.fxRate:1);
+    payload.balance=sign*Math.round(Math.abs(bal)*fxRate);
+    payload.stock_data=Object.assign(payload.stock_data||{},{currency:addCcy,originalBalance:bal,fxRate:fxRate});
   }
 
   if(type==='股票'){
@@ -1333,13 +1400,56 @@ function submitAddAcct(){
       var monthly=isIntOnly?(Math.abs(bal)*rate/100/12):(pmtOverride||calcPMT(Math.abs(bal),rate,months));
       payload.description=isIntOnly?('每月利息 '+Math.round(monthly).toLocaleString()):('每月還 '+Math.round(monthly).toLocaleString());
     }
+    // loan disbursement
+    var disburseId=parseInt($('add-disburse-id').value)||0;
+    var loanFee=parseFloat($('add-loan-fee').value)||0;
+    if(disburseId&&type!=='股票質押'){
+      payload._disburseId=disburseId;payload._loanFee=loanFee;
+    }
   }
 
-  api('POST','/api/accounts',payload).then(function(){
-    $('m-addacct').classList.remove('on');
-    return loadAccounts();
+  var _disburseId=payload._disburseId;var _loanFee=payload._loanFee||0;
+  delete payload._disburseId;delete payload._loanFee;
+  api('POST','/api/accounts',payload).then(function(newAcct){
+    var finalBal=payload.balance;
+    var newId=newAcct?newAcct.id:null;
+    var promises=[];
+    // auto transaction: initial balance
+    if(finalBal!==0&&newId){
+      promises.push(api('POST','/api/transactions',{
+        date:new Date().toISOString().slice(0,10),
+        name:'初始餘額',category:'初始餘額',amount:finalBal,
+        note:name,icon:'📥',recurring:false,account_id:newId
+      }));
+    }
+    // loan disbursement: add net amount to target account
+    if(_disburseId&&newId){
+      var netAmt=Math.abs(finalBal)-_loanFee;
+      var targetAcct=allAccounts.find(function(a){return a.id===_disburseId;});
+      if(targetAcct){
+        var updatedBal=targetAcct.bal+netAmt;
+        promises.push(sb.from('accounts').update({balance:updatedBal}).eq('id',_disburseId));
+        promises.push(api('POST','/api/transactions',{
+          date:new Date().toISOString().slice(0,10),
+          name:'貸款撥入',category:'貸款撥入',amount:netAmt,
+          note:name+(_loanFee?' (扣手續費 '+_loanFee.toLocaleString()+')':''),
+          icon:'💰',recurring:false,account_id:_disburseId
+        }));
+        if(_loanFee>0){
+          promises.push(api('POST','/api/transactions',{
+            date:new Date().toISOString().slice(0,10),
+            name:'貸款手續費',category:'財務費用',amount:-_loanFee,
+            note:name,icon:'💸',recurring:false,account_id:newId
+          }));
+        }
+      }
+    }
+    return Promise.all(promises).then(function(){
+      $('m-addacct').classList.remove('on');
+      return Promise.all([loadAccounts(),loadTx()]);
+    });
   }).then(function(){
-    renderOverview();renderStocks();toast('✓ 已新增 '+name);
+    renderOverview();renderStocks();renderTx();toast('✓ 已新增 '+name);
   });
 }
 $('addAcctBtn').addEventListener('click',function(){addShowStep(1);$('m-addacct').classList.add('on');});
@@ -1359,10 +1469,11 @@ function openEditAcct(key,idx){
   if(!editIsStock){
     var acctCcy=it.ccy||'TWD';
     $('edit-ccy').value=acctCcy;
-    if(acctCcy==='USD'&&it.sk&&it.sk.originalBalance){
+    renderCcyChips('edit');
+    if(acctCcy!=='TWD'&&it.sk&&it.sk.originalBalance!=null){
       $('edit-bal').value=it.sk.originalBalance;
     }
-    onEditCcyChange();
+    pickCcy('edit',acctCcy);
   }
   $('edit-desc').value=it.desc||'';
   $('edit-stat').classList.toggle('on',it.stat);
@@ -1473,20 +1584,21 @@ function submitEdit(){
   var sign=(key==='debt')?-1:1;
   var newName=$('edit-name').value.trim()||it.name;
   var newBal=sign*Math.abs(parseFloat($('edit-bal').value)||0);
+  var oldBal=it.bal;
   var newDesc=$('edit-desc').value.trim();
   var newStat=$('edit-stat').classList.contains('on');
   var payload={name:newName,balance:newBal,description:newDesc,stat:newStat};
   // handle currency for non-stock accounts
-  if(!it.sk){
+  if(!it.sk||it.type!=='股票'){
     var editCcy=$('edit-ccy').value;
-    if(editCcy==='USD'){
+    if(editCcy!=='TWD'){
       var rawBal=Math.abs(parseFloat($('edit-bal').value)||0);
-      newBal=sign*Math.round(rawBal*st.fxRate);
+      var fxRate=_fxCache[editCcy]||(editCcy==='USD'?st.fxRate:1);
+      newBal=sign*Math.round(rawBal*fxRate);
       payload.balance=newBal;
-      payload.stock_data={currency:'USD',originalBalance:rawBal};
-    } else {
-      // if switching from USD to TWD, clear currency data
-      if(it.ccy==='USD') payload.stock_data=null;
+      payload.stock_data=Object.assign(payload.stock_data||{},{currency:editCcy,originalBalance:rawBal,fxRate:fxRate});
+    } else if(it.ccy&&it.ccy!=='TWD'){
+      payload.stock_data=null;
     }
   }
   // save stock data
@@ -1540,8 +1652,18 @@ function submitEdit(){
     it.name=newName;it.bal=newBal;it.desc=newDesc;it.stat=newStat;
     if(payload.stock_data)it.sk=payload.stock_data;
     if(payload.loan_data)it.loan=payload.loan_data;
+    // auto adjustment transaction if balance changed
+    var diff=newBal-oldBal;
+    if(diff!==0){
+      return api('POST','/api/transactions',{
+        date:new Date().toISOString().slice(0,10),
+        name:'餘額調整',category:'餘額調整',amount:diff,
+        note:newName,icon:'📝',recurring:false,account_id:it.id
+      }).then(function(){return loadTx();});
+    }
+  }).then(function(){
     $('m-edit').classList.remove('on');
-    renderOverview();renderStocks();
+    renderOverview();renderStocks();renderTx();
     if($('leveragePage').style.display==='flex')renderLeverage();
     toast('✓ 已儲存');
   });
@@ -2778,6 +2900,10 @@ function apSelectAccount(id,name){
     $('f-acct').value=id;
     $('f-acct-btn').textContent=name;
     $('f-acct-btn').classList.add('selected');
+  } else if(target==='add-disburse'){
+    $('add-disburse-id').value=id;
+    $('add-disburse-btn').textContent=name;
+    $('add-disburse-btn').classList.add('selected');
   }
   $('m-acct-picker').classList.remove('on');
 }

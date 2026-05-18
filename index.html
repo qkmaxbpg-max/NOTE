@@ -15,7 +15,7 @@
 <!-- PWA: common -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=7">
+<link rel="stylesheet" href="style.css?v=8">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -354,12 +354,12 @@
       <div class="step-back" onclick="addShowStep(2)"><svg viewBox="0 0 16 16"><path d="M10 4L6 8l4 4"/></svg>返回</div>
       <div class="mttl" id="add-s3-ttl">帳戶設定</div>
       <div class="field"><label>帳戶名稱</label><input type="text" id="add-name" placeholder="自訂名稱"></div>
-      <div class="field" id="add-bal-wrap"><label>餘額（NT$）</label><input type="number" id="add-bal" placeholder="0" inputmode="decimal" oninput="calcAddLoan()"></div>
-      <div class="field" id="add-ccy-wrap"><label>幣別</label>
-        <select id="add-ccy" onchange="onAddCcyChange()">
-          <option value="TWD">NT$ 台幣</option>
-          <option value="USD">US$ 美元</option>
-        </select>
+      <div class="field" id="add-bal-wrap"><label>餘額（NT$）</label><input type="number" id="add-bal" placeholder="0" inputmode="decimal" oninput="calcAddLoan();updateCcyPreview('add');calcLoanDisburse()"></div>
+      <div id="add-ccy-wrap">
+        <label style="font-size:12px;color:var(--fg2);margin-bottom:6px;display:block">幣別</label>
+        <div class="ccy-chips" id="add-ccy-chips"></div>
+        <input type="hidden" id="add-ccy" value="TWD">
+        <div class="ccy-fx-note" id="add-ccy-fx" style="display:none"></div>
       </div>
       <div id="add-stock-f" style="display:none">
         <div class="field" style="position:relative">
@@ -419,6 +419,20 @@
           <div class="info-row" id="add-total-row"><span class="info-lbl">總還款金額</span><span class="info-val" id="add-total-pay">—</span></div>
           <div class="info-row"><span class="info-lbl">總利息支出</span><span class="info-val" id="add-total-int">—</span></div>
         </div>
+        <div id="add-loan-disburse" style="display:none">
+          <div style="font-size:11px;color:var(--fg2);text-transform:uppercase;letter-spacing:.07em;margin:16px 0 8px;padding-top:12px;border-top:1px solid var(--bg3)">💰 撥款設定</div>
+          <div class="field">
+            <label>撥款至</label>
+            <div class="acct-pick-btn" id="add-disburse-btn" onclick="openAcctPicker('add-disburse')">選擇入帳帳戶</div>
+            <input type="hidden" id="add-disburse-id">
+          </div>
+          <div class="field"><label>手續費 / 開辦費</label><input type="number" id="add-loan-fee" placeholder="0" oninput="calcLoanDisburse()"></div>
+          <div class="info-box" id="add-disburse-box" style="display:none">
+            <div class="info-row"><span class="info-lbl">借款金額</span><span class="info-val" id="add-dis-amt">—</span></div>
+            <div class="info-row"><span class="info-lbl">扣除費用</span><span class="info-val" id="add-dis-fee">— 0</span></div>
+            <div class="info-row" style="border-top:1px solid var(--bg4);padding-top:8px;margin-top:4px"><span class="info-lbl" style="font-weight:600">實際入帳</span><span class="info-val" id="add-dis-net">—</span></div>
+          </div>
+        </div>
       </div>
       <div id="add-pledge-f" style="display:none">
         <div style="font-size:11px;color:var(--fg2);text-transform:uppercase;letter-spacing:.07em;margin:4px 0 8px">🔒 質押標的</div>
@@ -437,12 +451,12 @@
     <div class="mpull"></div>
     <div class="mttl" id="edit-ttl">編輯帳戶</div>
     <div class="field"><label>帳戶名稱</label><input type="text" id="edit-name"></div>
-    <div class="field" id="edit-bal-wrap"><label>餘額（NT$）</label><input type="number" id="edit-bal" oninput="calcEditLoan()"></div>
-    <div class="field" id="edit-ccy-wrap"><label>幣別</label>
-      <select id="edit-ccy" onchange="onEditCcyChange()">
-        <option value="TWD">NT$ 台幣</option>
-        <option value="USD">US$ 美元</option>
-      </select>
+    <div class="field" id="edit-bal-wrap"><label>餘額（NT$）</label><input type="number" id="edit-bal" oninput="calcEditLoan();updateCcyPreview('edit')"></div>
+    <div id="edit-ccy-wrap">
+      <label style="font-size:12px;color:var(--fg2);margin-bottom:6px;display:block">幣別</label>
+      <div class="ccy-chips" id="edit-ccy-chips"></div>
+      <input type="hidden" id="edit-ccy" value="TWD">
+      <div class="ccy-fx-note" id="edit-ccy-fx" style="display:none"></div>
     </div>
     <div id="edit-stock-f" style="display:none">
       <div class="f2">
@@ -719,6 +733,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=7"></script>
+<script src="app.js?v=8"></script>
 </body>
 </html>
