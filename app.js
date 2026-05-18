@@ -557,7 +557,10 @@ function api(method,url,body){
   // DELETE /api/accounts/:id
   m=url.match(/^\/api\/accounts\/(\d+)$/);
   if(method==='DELETE'&&m){
-    return sb.from('accounts').delete().eq('id',parseInt(m[1])).then(function(){return{ok:true};});
+    var delId=parseInt(m[1]);
+    return sb.from('transactions').delete().eq('account_id',delId).then(function(){
+      return sb.from('accounts').delete().eq('id',delId);
+    }).then(function(){return{ok:true};});
   }
   // GET /api/groups
   if(method==='GET'&&url==='/api/groups'){
