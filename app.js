@@ -1592,13 +1592,13 @@ function submitAddAcct(){
         note:_srcTkNote,icon:'📈',recurring:false,account_id:_skSrcId
       }));
     }
-    // loan disbursement: add net amount to target account
+    // loan disbursement: full loan amount to target account (fee tracked separately)
     if(_disburseId&&newId){
-      var netAmt=Math.abs(finalBal)-_loanFee;
+      var disbAmt=Math.abs(finalBal);
       promises.push(api('POST','/api/transactions',{
         date:new Date().toISOString().slice(0,10),
-        name:'貸款撥入',category:'貸款撥入',amount:netAmt,
-        note:name+(_loanFee?' (扣手續費 '+_loanFee.toLocaleString()+')':''),
+        name:'貸款撥入',category:'貸款撥入',amount:disbAmt,
+        note:name,
         icon:'💰',recurring:false,account_id:_disburseId
       }));
       if(_loanFee>0){
