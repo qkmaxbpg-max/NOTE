@@ -570,3 +570,34 @@ body.light .acct-add-btn:hover{background:rgba(0,0,0,.03)}
 .sk-search-wrap{position:relative}
 .sk-search-clear{position:absolute;right:10px;top:50%;transform:translateY(-50%);width:22px;height:22px;border-radius:50%;background:var(--bg4);color:var(--fg2);border:none;font-size:13px;line-height:22px;text-align:center;cursor:pointer;display:none;padding:0;font-family:var(--font)}
 .sk-search-clear:hover{background:var(--bg5);color:var(--fg0)}
+
+/* stock tx history - compact list */
+.sktx-hd{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--r);cursor:pointer;margin:8px 16px 0;transition:border-radius .2s}
+.sktx-hd.open{border-radius:var(--r) var(--r) 0 0;border-bottom-color:transparent}
+.sktx-hd-left{display:flex;align-items:center;gap:8px}
+.sktx-title{font-size:14px;font-weight:600;color:var(--fg0)}
+.sktx-badge{font-size:11px;font-weight:600;font-family:var(--mono);background:var(--bg4);color:var(--fg2);padding:1px 7px;border-radius:8px;min-width:20px;text-align:center}
+.sktx-hd-right{display:flex;align-items:center;gap:4px}
+.sktx-arrow{width:28px;height:28px;border:none;border-radius:8px;background:var(--bg3);color:var(--fg2);font-size:16px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;font-family:var(--font);transition:background .15s}
+.sktx-arrow:hover{background:var(--bg4);color:var(--fg0)}
+.sktx-month{font-size:13px;font-weight:500;color:var(--fg1);min-width:32px;text-align:center}
+.sktx-chev{color:var(--fg3);transition:transform .25s;margin-left:4px}
+.sktx-hd.open .sktx-chev{transform:rotate(180deg)}
+.sktx-body{max-height:0;overflow:hidden;transition:max-height .3s cubic-bezier(.4,0,.2,1);background:var(--bg2);border:1px solid var(--bg4);border-top:none;border-radius:0 0 var(--r) var(--r);margin:0 16px}
+.sktx-body.open{max-height:2000px}
+.sktx-day{font-size:11px;font-weight:500;color:var(--fg3);padding:8px 14px 4px;letter-spacing:.03em}
+.sktx-row{display:flex;align-items:center;gap:10px;padding:9px 14px;border-bottom:1px solid var(--bg3)}
+.sktx-row:last-child{border-bottom:none}
+.sktx-ico{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;letter-spacing:-.02em}
+.sktx-info{flex:1;min-width:0;display:flex;align-items:center;gap:6px}
+.sktx-ticker{font-size:13px;font-weight:600;color:var(--fg0)}
+.sktx-tag{font-size:10px;font-weight:600;padding:2px 6px;border-radius:6px;flex-shrink:0}
+.sktx-tag.buy{background:var(--gbg);color:var(--green);border:1px solid var(--gbord)}
+.sktx-tag.sell{background:var(--rbg);color:var(--red);border:1px solid var(--rbord)}
+.sktx-tag.init{background:var(--bbg);color:var(--blue);border:1px solid var(--bbord)}
+.sktx-shares{font-size:11px;color:var(--fg2)}
+.sktx-amt{font-family:var(--mono);font-size:13px;font-weight:600;flex-shrink:0;text-align:right}
+.sktx-amt.g{color:var(--green)}.sktx-amt.r{color:var(--red)}.sktx-amt.b{color:var(--blue)}
+.sktx-empty{text-align:center;padding:20px 14px;font-size:13px;color:var(--fg3)}
+body.light .sktx-hd{background:#fff;border-color:rgba(0,0,0,.07);box-shadow:0 2px 10px rgba(0,0,0,.06)}
+body.light .sktx-body{background:#fff;border-color:rgba(0,0,0,.07)}

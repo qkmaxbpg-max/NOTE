@@ -39,7 +39,7 @@ var st={
   addL1:null,addL3:null,
   editKey:null,editIdx:null,
   selectedGrp:null,openGrps:{},
-  skPageOpen:{},
+  skPageOpen:{},skTxOpen:false,skTxMonth:null,skTxYear:null,
   fxRate:32.5,priceTs:null,
   userId:parseInt(localStorage.getItem('ft_uid'))||1,
   users:[]
@@ -1907,24 +1907,7 @@ function renderStocks(){
   $('us-stocks').innerHTML=us.map(function(it,i){return skBlock(it,'us'+i);}).join('')||'<div class="empty-note">尚未新增美股持倉</div>';
   renderStockChart(skChartPeriod);
   // render stock transaction history
-  var skTxEl=$('sk-tx-history');
-  if(skTxEl){
-    var stockTxCats=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
-    var skTxs=txs.filter(function(t){return stockTxCats.indexOf(t.cat)>=0;});
-    if(skTxs.length===0){
-      skTxEl.innerHTML='<div class="empty-note" style="padding:14px">本月尚無交易紀錄</div>';
-    } else {
-      skTxEl.innerHTML=skTxs.map(function(t){
-        var isPos=t.amt>=0;
-        return '<div style="display:flex;align-items:center;padding:12px 14px;border-bottom:1px solid var(--bg3)">'
-          +'<span style="font-size:16px;margin-right:10px">'+(t.icon||'📋')+'</span>'
-          +'<div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:500;color:var(--fg0)">'+t.name+'</div>'
-          +'<div style="font-size:11px;color:var(--fg3)">'+t.date+(t.note?' · '+t.note:'')+'</div></div>'
-          +'<div style="font-family:var(--mono);font-size:13px;font-weight:500;color:'+(isPos?'var(--green)':'var(--red)')+'">'
-          +(isPos?'+':'')+fmtN(cvt(t.amt))+'</div></div>';
-      }).join('');
-    }
-  }
+  renderSkTxHistory();
 }
 function toggleSk(rId,eId){
   st.skPageOpen[eId]=!st.skPageOpen[eId];
@@ -1933,6 +1916,104 @@ function toggleSk(rId,eId){
   if(e)e.classList.toggle('open',!!st.skPageOpen[eId]);
   if(r){var ch=r.querySelector('.sk-chev');if(ch)ch.style.transform=st.skPageOpen[eId]?'rotate(180deg)':'';}
 }
+
+/* ── Stock Transaction History (compact list) ── */
+function toggleSkTx(){
+  st.skTxOpen=!st.skTxOpen;
+  var hd=$('sktx-hd'),bd=$('sk-tx-history'),ch=$('sktx-chev');
+  if(hd)hd.classList.toggle('open',st.skTxOpen);
+  if(bd)bd.classList.toggle('open',st.skTxOpen);
+}
+function navSkTxMonth(dir){
+  if(st.skTxMonth===null){st.skTxMonth=st.curMonth;st.skTxYear=st.curYear;}
+  st.skTxMonth+=dir;
+  if(st.skTxMonth>11){st.skTxMonth=0;st.skTxYear++;}
+  if(st.skTxMonth<0){st.skTxMonth=11;st.skTxYear--;}
+  renderSkTxHistory();
+}
+function renderSkTxHistory(){
+  var el=$('sk-tx-history'),hd=$('sktx-hd'),badge=$('sktx-badge'),monthEl=$('sktx-month');
+  if(!el)return;
+  var m=st.skTxMonth!==null?st.skTxMonth:st.curMonth;
+  var y=st.skTxYear!==null?st.skTxYear:st.curYear;
+  if(monthEl)monthEl.textContent=(m+1)+'月';
+  // re-apply open state
+  if(hd)hd.classList.toggle('open',!!st.skTxOpen);
+  el.classList.toggle('open',!!st.skTxOpen);
+
+  var prefix=y+'-'+MONTHS[m];
+  var stockTxCats=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
+
+  // If viewing a different month than current, we need to fetch from DB
+  var isCurMonth=(m===st.curMonth&&y===st.curYear);
+  if(isCurMonth){
+    _renderSkTxRows(el,badge,txs.filter(function(t){return stockTxCats.indexOf(t.cat)>=0;}));
+  } else {
+    sb.from('transactions').select('*').eq('user_id',st.userId).like('date',prefix+'%').order('date',{ascending:false}).order('id',{ascending:false}).then(function(res){
+      var rows=(res.data||[]).map(function(r){
+        return {id:r.id,date:r.date,name:r.name,cat:r.category,amt:r.amount,note:r.note||'',icon:r.icon||'',account_id:r.account_id};
+      }).filter(function(t){return stockTxCats.indexOf(t.cat)>=0;});
+      _renderSkTxRows(el,badge,rows);
+    });
+  }
+}
+function _renderSkTxRows(el,badge,skTxs){
+  if(badge)badge.textContent=skTxs.length;
+  if(skTxs.length===0){
+    el.innerHTML='<div class="sktx-empty">本月尚無交易紀錄</div>';
+    return;
+  }
+  // group by date
+  var groups={},order=[];
+  skTxs.forEach(function(t){
+    if(!groups[t.date]){groups[t.date]=[];order.push(t.date);}
+    groups[t.date].push(t);
+  });
+  var html='';
+  order.forEach(function(d){
+    var dd=new Date(d);
+    var days=['日','一','二','三','四','五','六'];
+    html+='<div class="sktx-day">'+d.slice(5)+' 週'+days[dd.getDay()]+'</div>';
+    groups[d].forEach(function(t){
+      var ticker=t.note||t.name;
+      // extract ticker from note or name
+      var parts=t.name.split(' ');
+      var tkr=parts.length>1?parts[0]:t.name;
+      // determine tag
+      var isBuy=(t.cat==='買入股票'||t.cat==='購入股票');
+      var isSell=(t.cat==='賣出股票'||t.cat==='賣股入帳');
+      var isInit=(t.cat==='初始餘額');
+      var tagCls=isBuy?'buy':isSell?'sell':'init';
+      var tagTxt=isBuy?'買入':isSell?'賣出':'建倉';
+      var amtCls=isBuy?'g':isSell?'r':'b';
+      // try parse shares from note
+      var sharesText='';
+      if(t.note){
+        var sm=t.note.match(/(\d+(?:\.\d+)?)\s*股/);
+        if(sm)sharesText=sm[1]+'股';
+      }
+      // find account color
+      var dot='var(--green)';
+      var allAccts=getAccountsList();
+      for(var i=0;i<allAccts.length;i++){
+        if(allAccts[i].id===t.account_id){dot=allAccts[i].dot;tkr=allAccts[i].name;break;}
+      }
+      var absAmt=fmtN(Math.round(Math.abs(t.amt)));
+      var amtStr=t.amt>=0?'+'+absAmt:'-'+absAmt;
+      html+='<div class="sktx-row">'
+        +'<div class="sktx-ico" style="background:'+dot+';color:#fff">'+tkr.slice(0,3)+'</div>'
+        +'<div class="sktx-info">'
+        +'<span class="sktx-ticker">'+tkr+'</span>'
+        +'<span class="sktx-tag '+tagCls+'">'+tagTxt+'</span>'
+        +(sharesText?'<span class="sktx-shares">'+sharesText+'</span>':'')
+        +'</div>'
+        +'<div class="sktx-amt '+amtCls+'">'+amtStr+'</div>'
+        +'</div>';
+    });
+  });
+  el.innerHTML=html;
+}
+
 function calcSkFee(){
   var sh=parseFloat($('s-sh').value)||0,pr=parseFloat($('s-cp').value)||0,paid=parseFloat($('s-paid').value)||0;
   var box=$('sk-fee-box');
