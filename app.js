@@ -2105,15 +2105,15 @@ function _renderSkTxRows(el,badge,skTxs){
       for(var i=0;i<allAccts.length;i++){
         if(allAccts[i].id===t.stockAcctId){dot=allAccts[i].dot;break;}
       }
-      var tagCls=t.action==='buy'?'buy':t.action==='sell'?'sell':'init';
-      var tagTxt=t.action==='buy'?'買入':t.action==='sell'?'賣出':'建倉';
+      var tagCls=t.action==='buy'||t.action==='init'?'buy':'sell';
+      var tagTxt=t.action==='buy'||t.action==='init'?'買入':'賣出';
       var absAmt=fmtN(Math.round(Math.abs(t.totalAmt)));
       var amtStr=t.action==='sell'?'+'+absAmt:'-'+absAmt;
       var amtCls=t.action==='sell'?'g':'b';
       var detail='';
       if(t.shares) detail+=t.shares+'股';
       if(t.srcName) detail+=(detail?'．':'')+t.srcName;
-      var delBtn=t.action!=='init'?'<button class="sktx-del" onclick="event.stopPropagation();delStockTx('+mi+')">✕</button>':'';
+      var delBtn='<button class="sktx-del" onclick="event.stopPropagation();delStockTx('+mi+')">✕</button>';
       html+='<div class="sktx-row">'
         +'<div class="sktx-ico" style="background:'+dot+';color:#fff">'+ticker.slice(0,3)+'</div>'
         +'<div class="sktx-info">'
@@ -2504,7 +2504,7 @@ function renderTx(){
         var stAcctName=getAcctName(t.account_id)||stTicker;
         var stLabel,stIcon,stMeta='';
         if(isStockBuy){
-          stLabel=t.cat==='初始餘額'?'建倉':'買入';
+          stLabel='買入';
           stIcon='📈';
           if(t._stockSrc) stMeta=stAcctName+(stShares?' · '+stShares:'')+' · '+getAcctName(t._stockSrc);
           else stMeta=stAcctName+(stShares?' · '+stShares:'');
