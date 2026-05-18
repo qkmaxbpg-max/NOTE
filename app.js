@@ -571,11 +571,36 @@ function api(method,url,body){
     });
     return sb.from('accounts').update(upd).eq('id',aid).then(function(res){return{ok:true};});
   }
-  // DELETE /api/accounts/:id
+  // DELETE /api/accounts/:id — also reverses paired transactions on other accounts
   m=url.match(/^\/api\/accounts\/(\d+)$/);
   if(method==='DELETE'&&m){
     var delId=parseInt(m[1]);
-    return sb.from('transactions').delete().eq('account_id',delId).then(function(){
+    var pairedCategories=['購入股票','賣股入帳','貸款撥入'];
+    return sb.from('accounts').select('name,stock_data').eq('id',delId).single().then(function(acctRes){
+      var acctName=(acctRes.data&&acctRes.data.name)||'';
+      var ticker=(acctRes.data&&acctRes.data.stock_data&&acctRes.data.stock_data.ticker)||acctName;
+      return sb.from('transactions').select('*').eq('user_id',st.userId).in('category',pairedCategories).then(function(txRes){
+        var paired=(txRes.data||[]).filter(function(tx){
+          if(tx.account_id===delId) return false;
+          var n=(tx.note||'').split(' ')[0];
+          return n===ticker||n===acctName||(tx.note||'').indexOf(acctName)===0;
+        });
+        var reversePromises=[];
+        paired.forEach(function(tx){
+          if(tx.account_id){
+            reversePromises.push(
+              sb.from('accounts').select('balance').eq('id',tx.account_id).single().then(function(r){
+                if(r.data) return sb.from('accounts').update({balance:r.data.balance-tx.amount}).eq('id',tx.account_id);
+              })
+            );
+          }
+          reversePromises.push(sb.from('transactions').delete().eq('id',tx.id));
+        });
+        return Promise.all(reversePromises);
+      });
+    }).then(function(){
+      return sb.from('transactions').delete().eq('account_id',delId);
+    }).then(function(){
       return sb.from('accounts').delete().eq('id',delId);
     }).then(function(){return{ok:true};});
   }
@@ -1560,31 +1585,22 @@ function submitAddAcct(){
     }
     // stock purchase: deduct from source account
     if(_skSrcId&&newId&&_paidTWD){
-      var srcAcct=allAccounts.find(function(a){return a.id===_skSrcId;});
-      if(srcAcct){
-        var newSrcBal=srcAcct.bal-Math.round(_paidTWD);
-        promises.push(sb.from('accounts').update({balance:newSrcBal}).eq('id',_skSrcId));
-        var _srcTkNote=payload.stock_data?payload.stock_data.ticker:name;
-        promises.push(api('POST','/api/transactions',{
-          date:new Date().toISOString().slice(0,10),
-          name:'購入股票',category:'購入股票',amount:-Math.round(_paidTWD),
-          note:_srcTkNote,icon:'📈',recurring:false,account_id:_skSrcId
-        }));
-      }
+      var _srcTkNote=payload.stock_data?payload.stock_data.ticker:name;
+      promises.push(api('POST','/api/transactions',{
+        date:new Date().toISOString().slice(0,10),
+        name:'購入股票',category:'購入股票',amount:-Math.round(_paidTWD),
+        note:_srcTkNote,icon:'📈',recurring:false,account_id:_skSrcId
+      }));
     }
     // loan disbursement: add net amount to target account
     if(_disburseId&&newId){
       var netAmt=Math.abs(finalBal)-_loanFee;
-      var targetAcct=allAccounts.find(function(a){return a.id===_disburseId;});
-      if(targetAcct){
-        var updatedBal=targetAcct.bal+netAmt;
-        promises.push(sb.from('accounts').update({balance:updatedBal}).eq('id',_disburseId));
-        promises.push(api('POST','/api/transactions',{
-          date:new Date().toISOString().slice(0,10),
-          name:'貸款撥入',category:'貸款撥入',amount:netAmt,
-          note:name+(_loanFee?' (扣手續費 '+_loanFee.toLocaleString()+')':''),
-          icon:'💰',recurring:false,account_id:_disburseId
-        }));
+      promises.push(api('POST','/api/transactions',{
+        date:new Date().toISOString().slice(0,10),
+        name:'貸款撥入',category:'貸款撥入',amount:netAmt,
+        note:name+(_loanFee?' (扣手續費 '+_loanFee.toLocaleString()+')':''),
+        icon:'💰',recurring:false,account_id:_disburseId
+      }));
         if(_loanFee>0){
           promises.push(api('POST','/api/transactions',{
             date:new Date().toISOString().slice(0,10),
@@ -2724,12 +2740,13 @@ function submitTx(){
 // ── Buy/Sell Stock in TX modal ──
 function populateTxBuyStock(){
   var sel=$('tx-buy-stock');
-  sel.innerHTML='<option value="">-- 選擇已持有或搜尋新股 --</option><option value="__new__">🔍 搜尋新股票…</option>';
+  var html='<option value="">-- 選擇已持有或搜尋新股 --</option><option value="__new__">🔍 搜尋新股票…</option>';
   data.invest.items.forEach(function(it){
     if(it.sk&&it.sk.ticker){
-      sel.innerHTML+='<option value="'+it.id+'">'+it.sk.ticker+(it.sk.isUs?' 🇺🇸':' 🇹🇼')+' (持有 '+it.sk.shares+'股)</option>';
+      html+='<option value="'+it.id+'">'+it.sk.ticker+(it.sk.isUs?' 🇺🇸':' 🇹🇼')+' (持有 '+it.sk.shares+'股)</option>';
     }
   });
+  sel.innerHTML=html;
   $('tx-buy-search-wrap').style.display='none';
   $('tx-buy-date').value=new Date().toISOString().slice(0,10);
   $('tx-buy-sh').value='';$('tx-buy-pr').value='';$('tx-buy-paid').value='';
@@ -2801,14 +2818,10 @@ function submitTxBuy(){
       note:tk+' +'+sh+'股 @'+pr,icon:'📈',recurring:false,account_id:existing.id
     }));
     if(srcId){
-      var sa=allAccounts.find(function(a){return a.id===srcId;});
-      if(sa){
-        promises.push(sb.from('accounts').update({balance:sa.bal-Math.round(paidTWD)}).eq('id',srcId));
-        promises.push(api('POST','/api/transactions',{
-          date:txDate,name:'購入股票',category:'購入股票',amount:-Math.round(paidTWD),
-          note:tk,icon:'📈',recurring:false,account_id:srcId
-        }));
-      }
+      promises.push(api('POST','/api/transactions',{
+        date:txDate,name:'購入股票',category:'購入股票',amount:-Math.round(paidTWD),
+        note:tk,icon:'📈',recurring:false,account_id:srcId
+      }));
     }
     Promise.all(promises).then(function(){
       $('m-tx').classList.remove('on');
@@ -2831,14 +2844,10 @@ function submitTxBuy(){
         }));
       }
       if(srcId&&newId){
-        var sa=allAccounts.find(function(a){return a.id===srcId;});
-        if(sa){
-          promises.push(sb.from('accounts').update({balance:sa.bal-Math.round(paidTWD)}).eq('id',srcId));
-          promises.push(api('POST','/api/transactions',{
-            date:txDate,name:'購入股票',category:'購入股票',amount:-Math.round(paidTWD),
-            note:tk,icon:'📈',recurring:false,account_id:srcId
-          }));
-        }
+        promises.push(api('POST','/api/transactions',{
+          date:txDate,name:'購入股票',category:'購入股票',amount:-Math.round(paidTWD),
+          note:tk,icon:'📈',recurring:false,account_id:srcId
+        }));
       }
       return Promise.all(promises).then(function(){
         $('m-tx').classList.remove('on');
@@ -2849,12 +2858,13 @@ function submitTxBuy(){
 }
 function populateTxSellStock(){
   var sel=$('tx-sell-stock');
-  sel.innerHTML='<option value="">-- 選擇要賣出的持股 --</option>';
+  var html='<option value="">-- 選擇要賣出的持股 --</option>';
   data.invest.items.forEach(function(it){
     if(it.sk&&it.sk.ticker&&it.sk.shares>0){
-      sel.innerHTML+='<option value="'+it.id+'">'+it.sk.ticker+(it.sk.isUs?' 🇺🇸':' 🇹🇼')+' (持有 '+it.sk.shares+'股 均價 '+it.sk.avgPrice+')</option>';
+      html+='<option value="'+it.id+'">'+it.sk.ticker+(it.sk.isUs?' 🇺🇸':' 🇹🇼')+' (持有 '+it.sk.shares+'股 均價 '+it.sk.avgPrice+')</option>';
     }
   });
+  sel.innerHTML=html;
   $('tx-sell-info').style.display='none';
   $('tx-sell-date').value=new Date().toISOString().slice(0,10);
   $('tx-sell-sh').value='';$('tx-sell-pr').value='';$('tx-sell-recv').value='';
@@ -2937,14 +2947,10 @@ function submitTxSell(){
   }));
   // deposit to destination account
   if(destId){
-    var da=allAccounts.find(function(a){return a.id===destId;});
-    if(da){
-      promises.push(sb.from('accounts').update({balance:da.bal+Math.round(recvTWD)}).eq('id',destId));
-      promises.push(api('POST','/api/transactions',{
-        date:txDate,name:'賣股入帳',category:'賣股入帳',amount:Math.round(recvTWD),
-        note:tk+' -'+sh+'股',icon:'💰',recurring:false,account_id:destId
-      }));
-    }
+    promises.push(api('POST','/api/transactions',{
+      date:txDate,name:'賣股入帳',category:'賣股入帳',amount:Math.round(recvTWD),
+      note:tk+' -'+sh+'股',icon:'💰',recurring:false,account_id:destId
+    }));
   }
   Promise.all(promises).then(function(){
     $('m-tx').classList.remove('on');
