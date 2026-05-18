@@ -359,7 +359,7 @@ body.light .acct-add-btn:hover{background:rgba(0,0,0,.03)}
 .chart-ax span{font-size:10px;font-family:var(--mono);color:var(--fg3)}
 
 .sk-summary{background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--r);padding:18px}
-.sk-card{background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--r);overflow:hidden}
+.sk-card{background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--r);overflow:hidden;flex-shrink:0}
 .sk-row{display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--bg3);gap:12px;cursor:pointer;user-select:none}
 .sk-row:last-of-type{border-bottom:none}
 .sk-row:hover{background:var(--bg3)}.sk-row.open-row{background:var(--bg3)}
@@ -572,7 +572,7 @@ body.light .acct-add-btn:hover{background:rgba(0,0,0,.03)}
 .sk-search-clear:hover{background:var(--bg5);color:var(--fg0)}
 
 /* stock tx history - compact list */
-.sktx-wrap{margin:8px 16px 0;border-radius:var(--r);overflow:hidden;border:1px solid var(--bg4);background:var(--bg2)}
+.sktx-wrap{margin:8px 16px 0;border-radius:var(--r);overflow:hidden;border:1px solid var(--bg4);background:var(--bg2);flex-shrink:0}
 .sktx-hd{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;cursor:pointer;background:var(--bg2)}
 .sktx-hd-left{display:flex;align-items:center;gap:8px}
 .sktx-title{font-size:14px;font-weight:600;color:var(--fg0)}
