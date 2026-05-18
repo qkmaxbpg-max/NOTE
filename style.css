@@ -359,7 +359,7 @@ body.light .acct-add-btn:hover{background:rgba(0,0,0,.03)}
 .chart-ax span{font-size:10px;font-family:var(--mono);color:var(--fg3)}
 
 .sk-summary{background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--r);padding:18px}
-.sk-card{background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--r)}
+.sk-card{background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--r);overflow:hidden}
 .sk-row{display:flex;align-items:center;padding:14px 18px;border-bottom:1px solid var(--bg3);gap:12px;cursor:pointer;user-select:none}
 .sk-row:last-of-type{border-bottom:none}
 .sk-row:hover{background:var(--bg3)}.sk-row.open-row{background:var(--bg3)}

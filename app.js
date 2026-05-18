@@ -1942,13 +1942,39 @@ function navSkTxMonth(dir){
   renderSkTxHistory();
 }
 function renderSkTxHistory(){
-  var el=$('sk-tx-history'),wrap=$('sktx-wrap'),badge=$('sktx-badge'),monthEl=$('sktx-month');
+  // Ensure wrapper structure exists (handles old cached HTML)
+  var wrap=$('sktx-wrap');
+  if(!wrap){
+    // Build wrapper dynamically from old sk-tx-history or create fresh
+    var oldEl=$('sk-tx-history');
+    var parent=oldEl?oldEl.parentNode:document.querySelector('#p-stocks .page-body');
+    if(!parent)return;
+    if(oldEl)parent.removeChild(oldEl);
+    // Also remove old sec-lbl if present
+    var prevSib=oldEl?null:null;
+    var labels=parent.querySelectorAll('.sec-lbl');
+    for(var li=0;li<labels.length;li++){if(labels[li].textContent.indexOf('交易紀錄')>=0)parent.removeChild(labels[li]);}
+    wrap=document.createElement('div');
+    wrap.className='sktx-wrap';wrap.id='sktx-wrap';
+    var addRow=parent.querySelector('.add-row');
+    if(addRow)parent.insertBefore(wrap,addRow);else parent.appendChild(wrap);
+    wrap.innerHTML='<div class="sktx-hd" onclick="toggleSkTx()">'
+      +'<div class="sktx-hd-left"><span class="sktx-title">交易紀錄</span><span class="sktx-badge" id="sktx-badge">0</span></div>'
+      +'<div class="sktx-hd-right">'
+      +'<button class="sktx-arrow" onclick="event.stopPropagation();navSkTxMonth(-1)">‹</button>'
+      +'<span class="sktx-month" id="sktx-month">5月</span>'
+      +'<button class="sktx-arrow" onclick="event.stopPropagation();navSkTxMonth(1)">›</button>'
+      +'<svg class="sktx-chev" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 6 8 10 12 6"/></svg>'
+      +'</div></div>'
+      +'<div id="sk-tx-history" class="sktx-body"></div>';
+  }
+  var el=$('sk-tx-history'),badge=$('sktx-badge'),monthEl=$('sktx-month');
   if(!el)return;
   var m=st.skTxMonth!==null?st.skTxMonth:st.curMonth;
   var y=st.skTxYear!==null?st.skTxYear:st.curYear;
   if(monthEl)monthEl.textContent=(m+1)+'月';
   // re-apply open state
-  if(wrap)wrap.classList.toggle('open',!!st.skTxOpen);
+  wrap.classList.toggle('open',!!st.skTxOpen);
 
   var prefix=y+'-'+MONTHS[m];
   var stockTxCats=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
