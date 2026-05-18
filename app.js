@@ -1575,11 +1575,12 @@ function submitAddAcct(){
     var promises=[];
     // auto transaction: initial balance
     if(finalBal!==0&&newId){
+      var initName='新增 '+name;
       var initNote=name;
-      if(type==='股票'){var _addTk=payload.stock_data?payload.stock_data.ticker:name;var _addSh=payload.stock_data?payload.stock_data.shares:0;initNote=_addTk+' +'+_addSh+'股 @'+(payload.stock_data?payload.stock_data.avgPrice:0);}
+      if(type==='股票'){initName='初始餘額';var _addTk=payload.stock_data?payload.stock_data.ticker:name;var _addSh=payload.stock_data?payload.stock_data.shares:0;initNote=_addTk+' +'+_addSh+'股 @'+(payload.stock_data?payload.stock_data.avgPrice:0);}
       promises.push(api('POST','/api/transactions',{
         date:new Date().toISOString().slice(0,10),
-        name:'初始餘額',category:'初始餘額',amount:finalBal,
+        name:initName,category:'初始餘額',amount:finalBal,
         note:initNote,icon:'📥',recurring:false,account_id:newId,_skipBal:true
       }));
     }
@@ -1592,22 +1593,16 @@ function submitAddAcct(){
         note:_srcTkNote,icon:'📈',recurring:false,account_id:_skSrcId
       }));
     }
-    // loan disbursement: full loan amount to target account (fee tracked separately)
+    // loan disbursement: net amount (after fee) to target account
     if(_disburseId&&newId){
-      var disbAmt=Math.abs(finalBal);
+      var netAmt=Math.abs(finalBal)-_loanFee;
+      var disbNote=name+(_loanFee?' (手續費 '+_loanFee.toLocaleString()+')':'');
       promises.push(api('POST','/api/transactions',{
         date:new Date().toISOString().slice(0,10),
-        name:'貸款撥入',category:'貸款撥入',amount:disbAmt,
-        note:name,
+        name:'貸款撥入',category:'貸款撥入',amount:netAmt,
+        note:disbNote,
         icon:'💰',recurring:false,account_id:_disburseId
       }));
-      if(_loanFee>0){
-        promises.push(api('POST','/api/transactions',{
-          date:new Date().toISOString().slice(0,10),
-          name:'貸款手續費',category:'財務費用',amount:-_loanFee,
-          note:name,icon:'💸',recurring:false,account_id:newId,_skipBal:true
-        }));
-      }
     }
     return Promise.all(promises).then(function(){
       $('m-addacct').classList.remove('on');
