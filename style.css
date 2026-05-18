@@ -278,6 +278,10 @@ body.light .acct-add-btn:hover{background:rgba(0,0,0,.03)}
 .ccy-chip:hover{border-color:var(--fg2)}
 .ccy-chip.on{border-color:var(--green);background:var(--gbg);color:var(--green)}
 .ccy-fx-note{font-size:11px;color:var(--fg2);padding:6px 10px;background:var(--bg2);border-radius:8px;margin-top:4px;font-family:var(--mono)}
+.paid-input-row{display:flex;gap:8px;align-items:stretch}
+.paid-ccy-tog{display:flex;border-radius:var(--rs);overflow:hidden;border:1.5px solid var(--bg4);flex-shrink:0}
+.paid-ccy-btn{padding:8px 12px;background:var(--bg2);color:var(--fg2);border:none;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--mono);transition:all .15s}
+.paid-ccy-btn.on{background:var(--gbg);color:var(--green)}
 .grp-pick-item{display:flex;align-items:center;gap:10px;padding:13px 16px;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);cursor:pointer;font-size:14px;font-weight:500;color:var(--fg0);margin-bottom:8px}
 .grp-pick-item:hover{border-color:var(--green)}
 .grp-pick-item.sel{border-color:var(--green);background:var(--gbg);color:var(--green)}

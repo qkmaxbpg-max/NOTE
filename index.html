@@ -15,7 +15,7 @@
 <!-- PWA: common -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -378,7 +378,22 @@
             <div class="field"><label>持有股數</label><input type="number" id="add-shares" placeholder="0" oninput="calcAddFee()"></div>
             <div class="field"><label>買入均價</label><input type="number" id="add-price" placeholder="0.00" step="0.01" oninput="calcAddFee()"></div>
           </div>
-          <div class="field"><label>實際付出（NT$）</label><input type="number" id="add-paid" placeholder="0" oninput="calcAddFee()"></div>
+          <div class="field">
+            <label>實際付出</label>
+            <div class="paid-input-row">
+              <input type="number" id="add-paid" placeholder="0" oninput="calcAddFee()" style="flex:1">
+              <div class="paid-ccy-tog" id="add-paid-ccy-tog">
+                <button class="paid-ccy-btn on" onclick="setPaidCcy('add','TWD')">NT$</button>
+                <button class="paid-ccy-btn" onclick="setPaidCcy('add','USD')">US$</button>
+              </div>
+            </div>
+            <input type="hidden" id="add-paid-ccy" value="TWD">
+          </div>
+          <div class="field">
+            <label>扣款帳戶（選填）</label>
+            <div class="acct-pick-btn" id="add-sk-src-btn" onclick="openAcctPicker('add-sk-src')">選擇扣款帳戶</div>
+            <input type="hidden" id="add-sk-src-id">
+          </div>
           <div class="field"><label>槓桿倍數</label>
             <select id="add-leverage">
               <option value="1">1x（一般）</option>
@@ -391,6 +406,7 @@
           <div class="info-box" id="add-fee-box" style="display:none">
             <div class="info-row"><span class="info-lbl">股票成本</span><span class="info-val" id="add-sub">—</span><span class="info-hint" id="add-sub-hint"></span></div>
             <div class="info-row"><span class="info-lbl">手續費</span><span class="info-val" id="add-fee">—</span></div>
+            <div class="info-row" id="add-paid-cvt-row" style="display:none"><span class="info-lbl">付出換算</span><span class="info-val" id="add-paid-cvt">—</span></div>
             <div class="info-row" style="border-top:1px solid var(--bg4);padding-top:8px;margin-top:4px"><span class="info-lbl" style="font-weight:600">帳上市值</span><span class="info-val" id="add-mkt-val">—</span><span class="info-hint" id="add-mkt-hint"></span></div>
           </div>
         </div>
@@ -589,7 +605,22 @@
         <div class="field"><label>持有股數</label><input type="number" id="s-sh" placeholder="0" oninput="calcSkFee()"></div>
         <div class="field"><label>買入均價</label><input type="number" id="s-cp" placeholder="0.00" step="0.01" oninput="calcSkFee()"></div>
       </div>
-      <div class="field"><label>實際付出總金額（NT$）</label><input type="number" id="s-paid" placeholder="0" oninput="calcSkFee()"></div>
+      <div class="field">
+        <label>實際付出</label>
+        <div class="paid-input-row">
+          <input type="number" id="s-paid" placeholder="0" oninput="calcSkFee()" style="flex:1">
+          <div class="paid-ccy-tog" id="s-paid-ccy-tog">
+            <button class="paid-ccy-btn on" onclick="setPaidCcy('s','TWD')">NT$</button>
+            <button class="paid-ccy-btn" onclick="setPaidCcy('s','USD')">US$</button>
+          </div>
+        </div>
+        <input type="hidden" id="s-paid-ccy" value="TWD">
+      </div>
+      <div class="field">
+        <label>扣款帳戶（選填）</label>
+        <div class="acct-pick-btn" id="s-sk-src-btn" onclick="openAcctPicker('s-sk-src')">選擇扣款帳戶</div>
+        <input type="hidden" id="s-sk-src-id">
+      </div>
       <div class="field"><label>槓桿倍數</label>
         <select id="s-leverage">
           <option value="1">1x（一般）</option>
@@ -602,6 +633,7 @@
       <div class="info-box" id="sk-fee-box" style="display:none">
         <div class="info-row"><span class="info-lbl">股票成本</span><span class="info-val" id="sk-sub">—</span><span class="info-hint" id="sk-sub-hint"></span></div>
         <div class="info-row"><span class="info-lbl">手續費</span><span class="info-val" id="sk-fee">—</span></div>
+        <div class="info-row" id="s-paid-cvt-row" style="display:none"><span class="info-lbl">付出換算</span><span class="info-val" id="s-paid-cvt">—</span></div>
         <div class="info-row" style="border-top:1px solid var(--bg4);padding-top:8px;margin-top:4px"><span class="info-lbl" style="font-weight:600">帳上市值</span><span class="info-val" id="sk-mkt-val">—</span><span class="info-hint" id="sk-mkt-hint"></span></div>
       </div>
       <div class="field"><label>顯示名稱（選填）</label><input type="text" id="s-nm" placeholder="台灣50 ETF"></div>
@@ -733,6 +765,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=8"></script>
+<script src="app.js?v=9"></script>
 </body>
 </html>

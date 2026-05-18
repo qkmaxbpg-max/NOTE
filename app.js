@@ -1207,6 +1207,7 @@ function addGoS3(type){
   $('add-stock-f').style.display=isStock?'block':'none';
   $('add-bal-wrap').style.display=isStock?'none':'';// hide balance for stocks
   $('add-ccy-wrap').style.display=isStock?'none':'';
+  if(isStock){$('add-paid-ccy').value='TWD';setPaidCcy('add','TWD');$('add-sk-src-id').value='';$('add-sk-src-btn').textContent='選擇扣款帳戶';$('add-sk-src-btn').classList.remove('selected');}
   $('add-ccy').value='TWD';renderCcyChips('add');pickCcy('add','TWD');
   if(isStock) clearStockSelection('add');
   $('add-debt-f').style.display=(LOAN_TYPES.indexOf(type)>=0)?'block':'none';
@@ -1278,20 +1279,43 @@ function addShowStep(n){
   $('add-s2').style.display=n===2?'block':'none';
   $('add-s3').style.display=n===3?'block':'none';
 }
+function setPaidCcy(prefix,ccy){
+  $(prefix+'-paid-ccy').value=ccy;
+  var tog=$(prefix+'-paid-ccy-tog');
+  if(tog)tog.querySelectorAll('.paid-ccy-btn').forEach(function(b){b.classList.toggle('on',b.textContent.indexOf(ccy==='TWD'?'NT':'US')>=0);});
+  if(prefix==='add')calcAddFee();else calcSkFee();
+}
 function calcAddFee(){
   var sh=parseFloat($('add-shares').value)||0,pr=parseFloat($('add-price').value)||0,paid=parseFloat($('add-paid').value)||0;
   if(!sh||!paid){$('add-fee-box').style.display='none';return;}
-  var sub=sh*pr,fee=paid-sub;
-  // get live quote price for market value
+  var isUs=$('add-isUs')&&$('add-isUs').value==='1';
+  var paidCcy=$('add-paid-ccy').value;
+  // convert paid to stock's native currency for fee calc
+  var paidNative=paid;
+  var showCvt=false;
+  if(isUs&&paidCcy==='TWD'){
+    // user entered TWD for US stock → convert to USD
+    paidNative=paid/st.fxRate;showCvt=true;
+  } else if(!isUs&&paidCcy==='USD'){
+    // user entered USD for TW stock → convert to TWD
+    paidNative=paid*st.fxRate;showCvt=true;
+  }
+  var sub=sh*pr,fee=paidNative-sub;
   var curPrice=pr;
   var cpEl=$('add-selected-card');
   if(cpEl&&cpEl._livePrice) curPrice=cpEl._livePrice;
-  var isUs=$('add-isUs')&&$('add-isUs').value==='1';
   var ccyLabel=isUs?'US$':'NT$';
   var mktVal=sh*curPrice;
   $('add-sub').textContent=ccyLabel+' '+Math.round(sub).toLocaleString();
   $('add-sub-hint').textContent=sh.toLocaleString()+' 股 × '+pr;
   $('add-fee').textContent=ccyLabel+' '+Math.round(Math.abs(fee)).toLocaleString();
+  var cvtRow=$('add-paid-cvt-row');
+  if(cvtRow){
+    if(showCvt){
+      var cvtLabel=isUs?('NT$ '+Math.round(paid).toLocaleString()+' ≈ US$ '+Math.round(paidNative).toLocaleString()):('US$ '+Math.round(paid).toLocaleString()+' ≈ NT$ '+Math.round(paidNative).toLocaleString());
+      $('add-paid-cvt').textContent=cvtLabel;cvtRow.style.display='';
+    } else {cvtRow.style.display='none';}
+  }
   $('add-mkt-val').textContent=ccyLabel+' '+Math.round(mktVal).toLocaleString();
   $('add-mkt-hint').textContent=sh.toLocaleString()+' 股 × '+curPrice;
   $('add-fee-box').style.display='block';
@@ -1360,11 +1384,20 @@ function submitAddAcct(){
     var sh=parseFloat($('add-shares').value)||0,pr=parseFloat($('add-price').value)||0,paid=parseFloat($('add-paid').value)||0;
     var isUs=$('add-isUs')&&$('add-isUs').value==='1';
     var addLev=parseInt($('add-leverage').value)||1;
-    var curPrice=pr;// default to avgPrice
+    var paidCcy=$('add-paid-ccy').value;
+    // convert paid to stock's native currency
+    var paidNative=paid;
+    if(isUs&&paidCcy==='TWD') paidNative=paid/st.fxRate;
+    else if(!isUs&&paidCcy==='USD') paidNative=paid*st.fxRate;
+    var curPrice=pr;
     var cpEl=$('add-selected-card');
     if(cpEl&&cpEl._livePrice) curPrice=cpEl._livePrice;
-    var fee=paid-(sh*pr);
-    payload.stock_data={ticker:$('add-ticker').value.trim().toUpperCase()||name,shares:sh,avgPrice:pr,paid:paid,curPrice:curPrice,fee:fee,isUs:isUs,leverage:addLev};
+    var fee=paidNative-(sh*pr);
+    payload.stock_data={ticker:$('add-ticker').value.trim().toUpperCase()||name,shares:sh,avgPrice:pr,paid:paidNative,curPrice:curPrice,fee:fee,isUs:isUs,leverage:addLev,paidCcy:paidCcy,paidOriginal:paid};
+    // store source account for deduction
+    var addSkSrcId=parseInt($('add-sk-src-id').value)||0;
+    if(addSkSrcId) payload._skSrcId=addSkSrcId;
+    payload._paidTWD=paidCcy==='TWD'?paid:(isUs?Math.round(paidNative*st.fxRate):paidNative);
     // balance = current market value (shares × live price)
     if(isUs){
       payload.balance=Math.round(sh*curPrice*st.fxRate);
@@ -1409,7 +1442,8 @@ function submitAddAcct(){
   }
 
   var _disburseId=payload._disburseId;var _loanFee=payload._loanFee||0;
-  delete payload._disburseId;delete payload._loanFee;
+  var _skSrcId=payload._skSrcId;var _paidTWD=payload._paidTWD||0;
+  delete payload._disburseId;delete payload._loanFee;delete payload._skSrcId;delete payload._paidTWD;
   api('POST','/api/accounts',payload).then(function(newAcct){
     var finalBal=payload.balance;
     var newId=newAcct?newAcct.id:null;
@@ -1421,6 +1455,19 @@ function submitAddAcct(){
         name:'初始餘額',category:'初始餘額',amount:finalBal,
         note:name,icon:'📥',recurring:false,account_id:newId
       }));
+    }
+    // stock purchase: deduct from source account
+    if(_skSrcId&&newId&&_paidTWD){
+      var srcAcct=allAccounts.find(function(a){return a.id===_skSrcId;});
+      if(srcAcct){
+        var newSrcBal=srcAcct.bal-Math.round(_paidTWD);
+        promises.push(sb.from('accounts').update({balance:newSrcBal}).eq('id',_skSrcId));
+        promises.push(api('POST','/api/transactions',{
+          date:new Date().toISOString().slice(0,10),
+          name:'購入股票',category:'購入股票',amount:-Math.round(_paidTWD),
+          note:name,icon:'📈',recurring:false,account_id:_skSrcId
+        }));
+      }
     }
     // loan disbursement: add net amount to target account
     if(_disburseId&&newId){
@@ -1829,16 +1876,27 @@ function calcSkFee(){
   var sh=parseFloat($('s-sh').value)||0,pr=parseFloat($('s-cp').value)||0,paid=parseFloat($('s-paid').value)||0;
   var box=$('sk-fee-box');
   if(!sh||!paid){box.style.display='none';return;}
-  var sub=sh*pr,fee=paid-sub;
+  var isUs=$('s-mkt').value==='美股';
+  var paidCcy=$('s-paid-ccy').value;
+  var paidNative=paid,showCvt=false;
+  if(isUs&&paidCcy==='TWD'){paidNative=paid/st.fxRate;showCvt=true;}
+  else if(!isUs&&paidCcy==='USD'){paidNative=paid*st.fxRate;showCvt=true;}
+  var sub=sh*pr,fee=paidNative-sub;
   var curPrice=pr;
   var cpEl=$('s-selected-card');
   if(cpEl&&cpEl._livePrice) curPrice=cpEl._livePrice;
-  var isUs=$('s-mkt').value==='美股';
   var ccyLabel=isUs?'US$':'NT$';
   var mktVal=sh*curPrice;
   $('sk-sub').textContent=ccyLabel+' '+Math.round(sub).toLocaleString();
   $('sk-sub-hint').textContent=sh.toLocaleString()+' 股 × '+pr;
   $('sk-fee').textContent=ccyLabel+' '+Math.round(Math.abs(fee)).toLocaleString();
+  var cvtRow=$('s-paid-cvt-row');
+  if(cvtRow){
+    if(showCvt){
+      var cvtLabel=isUs?('NT$ '+Math.round(paid).toLocaleString()+' ≈ US$ '+Math.round(paidNative).toLocaleString()):('US$ '+Math.round(paid).toLocaleString()+' ≈ NT$ '+Math.round(paidNative).toLocaleString());
+      $('s-paid-cvt').textContent=cvtLabel;cvtRow.style.display='';
+    } else {cvtRow.style.display='none';}
+  }
   $('sk-mkt-val').textContent=ccyLabel+' '+Math.round(mktVal).toLocaleString();
   $('sk-mkt-hint').textContent=sh.toLocaleString()+' 股 × '+curPrice;
   box.style.display='block';
@@ -1848,21 +1906,53 @@ function submitStock(){
   if(!tk){toast('請先搜尋並選擇一檔股票');return;}
   var isUs=$('s-mkt').value==='美股',sh=parseFloat($('s-sh').value)||0;
   var pr=parseFloat($('s-cp').value)||0,paid=parseFloat($('s-paid').value)||0;
+  var paidCcy=$('s-paid-ccy').value;
+  var paidNative=paid;
+  if(isUs&&paidCcy==='TWD') paidNative=paid/st.fxRate;
+  else if(!isUs&&paidCcy==='USD') paidNative=paid*st.fxRate;
   var nm=$('s-nm').value.trim()||tk,dot=DOTS[data.invest.items.length%DOTS.length];
   var curPrice=pr;
   var cpEl=$('s-selected-card');
   if(cpEl&&cpEl._livePrice) curPrice=cpEl._livePrice;
+  var fee=paidNative-(sh*pr);
   var mktVal=isUs?Math.round(sh*curPrice*st.fxRate):Math.round(sh*curPrice);
+  var paidTWD=paidCcy==='TWD'?paid:(isUs?Math.round(paidNative*st.fxRate):paidNative);
+  var skSrcId=parseInt($('s-sk-src-id').value)||0;
 
   api('POST','/api/accounts',{
     category:'invest',name:tk,type:'股票',balance:mktVal,description:nm,dot_color:dot,stat:true,
-    stock_data:{ticker:tk,shares:sh,avgPrice:pr,paid:paid,curPrice:curPrice,fee:paid-(sh*pr),isUs:isUs,leverage:parseInt($('s-leverage').value)||1}
+    stock_data:{ticker:tk,shares:sh,avgPrice:pr,paid:paidNative,curPrice:curPrice,fee:fee,isUs:isUs,leverage:parseInt($('s-leverage').value)||1,paidCcy:paidCcy,paidOriginal:paid}
+  }).then(function(newAcct){
+    var newId=newAcct?newAcct.id:null;
+    var promises=[];
+    // initial balance transaction
+    if(mktVal&&newId){
+      promises.push(api('POST','/api/transactions',{
+        date:new Date().toISOString().slice(0,10),
+        name:'初始餘額',category:'初始餘額',amount:mktVal,
+        note:tk,icon:'📥',recurring:false,account_id:newId
+      }));
+    }
+    // deduct from source account
+    if(skSrcId&&newId&&paidTWD){
+      var srcAcct=allAccounts.find(function(a){return a.id===skSrcId;});
+      if(srcAcct){
+        var newSrcBal=srcAcct.bal-Math.round(paidTWD);
+        promises.push(sb.from('accounts').update({balance:newSrcBal}).eq('id',skSrcId));
+        promises.push(api('POST','/api/transactions',{
+          date:new Date().toISOString().slice(0,10),
+          name:'購入股票',category:'購入股票',amount:-Math.round(paidTWD),
+          note:tk,icon:'📈',recurring:false,account_id:skSrcId
+        }));
+      }
+    }
+    return Promise.all(promises).then(function(){
+      $('m-stock').classList.remove('on');
+      clearStockSelection('s');
+      return Promise.all([loadAccounts(),loadTx()]);
+    });
   }).then(function(){
-    $('m-stock').classList.remove('on');
-    clearStockSelection('s');
-    return loadAccounts();
-  }).then(function(){
-    renderOverview();renderStocks();toast('✓ '+tk+' 已新增');
+    renderOverview();renderStocks();renderTx();toast('✓ '+tk+' 已新增');
   });
 }
 
@@ -2097,7 +2187,7 @@ function openModal(type){
     $('f-acct-btn').classList.remove('selected');
     $('m-tx').classList.add('on');
   }
-  if(type==='stock'){clearStockSelection('s');$('s-search').value='';$('m-stock').classList.add('on');}
+  if(type==='stock'){clearStockSelection('s');$('s-search').value='';$('s-paid-ccy').value='TWD';setPaidCcy('s','TWD');$('s-sk-src-id').value='';$('s-sk-src-btn').textContent='選擇扣款帳戶';$('s-sk-src-btn').classList.remove('selected');$('m-stock').classList.add('on');}
   if(type==='cat'){renderCatManager();buildGrpSelect();$('m-cat').classList.add('on');}
 }
 ['m-addacct','m-edit','m-grp','m-tx','m-stock','m-cat','m-transfer','m-acct-picker','m-cat-picker','m-user-edit'].forEach(function(id){
@@ -2904,6 +2994,14 @@ function apSelectAccount(id,name){
     $('add-disburse-id').value=id;
     $('add-disburse-btn').textContent=name;
     $('add-disburse-btn').classList.add('selected');
+  } else if(target==='add-sk-src'){
+    $('add-sk-src-id').value=id;
+    $('add-sk-src-btn').textContent=name;
+    $('add-sk-src-btn').classList.add('selected');
+  } else if(target==='s-sk-src'){
+    $('s-sk-src-id').value=id;
+    $('s-sk-src-btn').textContent=name;
+    $('s-sk-src-btn').classList.add('selected');
   }
   $('m-acct-picker').classList.remove('on');
 }
