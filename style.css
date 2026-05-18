@@ -277,6 +277,8 @@ body.light .acct-add-btn:hover{background:rgba(0,0,0,.03)}
 .ccy-chip{padding:6px 12px;border-radius:8px;border:1.5px solid var(--bg4);background:var(--bg2);color:var(--fg2);font-size:12px;font-weight:500;cursor:pointer;transition:all .15s;font-family:var(--mono)}
 .ccy-chip:hover{border-color:var(--fg2)}
 .ccy-chip.on{border-color:var(--green);background:var(--gbg);color:var(--green)}
+.ccy-more-btn{border-color:var(--bg4);color:var(--fg3);font-family:var(--font) !important;font-size:11px !important}
+.ccy-more-panel{display:none;flex-wrap:wrap;gap:6px;margin-top:6px;padding-top:6px;border-top:1px solid var(--bg3)}
 .ccy-fx-note{font-size:11px;color:var(--fg2);padding:6px 10px;background:var(--bg2);border-radius:8px;margin-top:4px;font-family:var(--mono)}
 .paid-input-row{display:flex;gap:8px;align-items:stretch}
 .paid-ccy-tog{display:flex;border-radius:var(--rs);overflow:hidden;border:1.5px solid var(--bg4);flex-shrink:0}

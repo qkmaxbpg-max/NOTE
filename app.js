@@ -1252,16 +1252,44 @@ function addGoS3(type){
 function renderCcyChips(prefix){
   var container=$(prefix+'-ccy-chips');if(!container)return;
   var current=$(prefix+'-ccy').value||'TWD';
+  var SHOW=5;
+  // If current currency is beyond first 5, always show it in main row
+  var mainCcys=CCYS.slice(0,SHOW);
+  var extraCcys=CCYS.slice(SHOW);
+  var curInExtra=extraCcys.findIndex(function(c){return c.code===current;})>=0;
   var html='';
-  CCYS.forEach(function(c){
+  mainCcys.forEach(function(c){
     html+='<button class="ccy-chip'+(c.code===current?' on':'')+'" onclick="pickCcy(\''+prefix+'\',\''+c.code+'\')">'+c.code+'<span style="font-family:var(--font);margin-left:2px;font-size:10px;opacity:.6">'+c.name+'</span></button>';
   });
+  if(curInExtra){
+    var cc=CCYS.find(function(c){return c.code===current;});
+    html+='<button class="ccy-chip on" onclick="pickCcy(\''+prefix+'\',\''+cc.code+'\')">'+cc.code+'<span style="font-family:var(--font);margin-left:2px;font-size:10px;opacity:.6">'+cc.name+'</span></button>';
+  }
+  html+='<button class="ccy-chip ccy-more-btn" onclick="toggleCcyMore(\''+prefix+'\')">更多 ▾</button>';
+  html+='<div class="ccy-more-panel" id="'+prefix+'-ccy-more" style="display:none">';
+  extraCcys.forEach(function(c){
+    html+='<button class="ccy-chip'+(c.code===current?' on':'')+'" onclick="pickCcy(\''+prefix+'\',\''+c.code+'\')">'+c.code+'<span style="font-family:var(--font);margin-left:2px;font-size:10px;opacity:.6">'+c.name+'</span></button>';
+  });
+  html+='</div>';
   container.innerHTML=html;
+}
+function toggleCcyMore(prefix){
+  var panel=$(prefix+'-ccy-more');
+  if(!panel)return;
+  var show=panel.style.display==='none';
+  panel.style.display=show?'flex':'none';
+  // update button text
+  var btn=panel.parentElement.querySelector('.ccy-more-btn');
+  if(btn)btn.textContent=show?'收起 ▴':'更多 ▾';
 }
 function pickCcy(prefix,code){
   $(prefix+'-ccy').value=code;
-  var chips=$(prefix+'-ccy-chips');
-  if(chips)chips.querySelectorAll('.ccy-chip').forEach(function(c){c.classList.toggle('on',c.textContent.indexOf(code)===0);});
+  renderCcyChips(prefix);
+  // close more panel after picking
+  var panel=$(prefix+'-ccy-more');
+  if(panel)panel.style.display='none';
+  var btn=panel?panel.parentElement.querySelector('.ccy-more-btn'):null;
+  if(btn)btn.textContent='更多 ▾';
   var ccyObj=CCYS.find(function(c){return c.code===code;})||{sym:code};
   var balWrap=$(prefix+'-bal-wrap');
   if(balWrap){var lbl=balWrap.querySelector('label');if(lbl)lbl.textContent='餘額（'+ccyObj.sym+'）';}
