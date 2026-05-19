@@ -1,4 +1,4 @@
-var CACHE_NAME = 'fintrack-v31';
+var CACHE_NAME = 'fintrack-v32';
 var ASSETS = [
   './index.html',
   './style.css',

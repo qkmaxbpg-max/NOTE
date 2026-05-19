@@ -940,7 +940,7 @@ function updateHero(){
       heroChipEl.textContent='▲ 0 +0.00%';
     } else {
       var pct=prevNW!==0?(Math.abs(todayChange)/Math.abs(prevNW)*100).toFixed(2):'0.00';
-      heroChipEl.className='chip '+(todayChange>=0?'up':'down');
+      heroChipEl.className='chip '+(todayChange>=0?'up':'dn');
       heroChipEl.textContent=(todayChange>=0?'▲ +':'▼ -')+fmtN(cvt(Math.abs(todayChange)))+' '+(todayChange>=0?'+':'-')+pct+'%';
     }
   }
