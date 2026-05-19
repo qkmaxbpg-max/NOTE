@@ -531,7 +531,9 @@ function navTo(page){
     document.querySelectorAll('.sidenav-item')[1].classList.add('active');
   } else {
     $('devPage').style.display='flex';
-    $('devPageTitle').textContent='資金投資分析工具';
+    $('calcHub').style.display='';
+    $('calcDetail').style.display='none';
+    renderCalcHub();
     document.querySelectorAll('.sidenav-item')[2].classList.add('active');
   }
 }
@@ -4521,6 +4523,533 @@ loadUsers().then(function(){
     });
   });
 });
+
+// ── Financial Calculators ──
+var CALCS=[
+  {id:'dca',name:'定期定額',icon:'📊',desc:'定期投資報酬試算'},
+  {id:'loan',name:'信貸計算',icon:'🏦',desc:'貸款還款與APR計算'},
+  {id:'pledge',name:'質押計算',icon:'🔒',desc:'股票質押額度試算'},
+  {id:'compound',name:'複利計算',icon:'📈',desc:'複利終值試算'},
+  {id:'irr',name:'IRR計算',icon:'📉',desc:'內部報酬率計算'},
+  {id:'inflation',name:'通膨計算',icon:'💸',desc:'購買力變化試算'}
+];
+var _calcHistKey='ft_calc_history';
+
+// ── History helpers ──
+function getCalcHistory(type){
+  try{var all=JSON.parse(localStorage.getItem(_calcHistKey)||'[]');return type?all.filter(function(h){return h.type===type;}):all;}catch(e){return[];}
+}
+function saveCalcHistory(type,inputs,results,label){
+  var all=getCalcHistory();
+  all.unshift({id:Date.now(),type:type,ts:new Date().toISOString(),inputs:inputs,results:results,label:label||''});
+  if(all.length>50)all=all.slice(0,50);
+  try{localStorage.setItem(_calcHistKey,JSON.stringify(all));}catch(e){}
+}
+function deleteCalcHistory(id){
+  var all=getCalcHistory().filter(function(h){return h.id!==id;});
+  try{localStorage.setItem(_calcHistKey,JSON.stringify(all));}catch(e){}
+}
+function clearCalcHistory(type){
+  if(type){var all=getCalcHistory().filter(function(h){return h.type!==type;});try{localStorage.setItem(_calcHistKey,JSON.stringify(all));}catch(e){}}
+  else{try{localStorage.removeItem(_calcHistKey);}catch(e){}}
+}
+function _calcHistTimeStr(ts){
+  var d=new Date(ts);var now=new Date();
+  var diff=now-d;
+  if(diff<60000)return '剛剛';
+  if(diff<3600000)return Math.floor(diff/60000)+'分鐘前';
+  if(diff<86400000)return Math.floor(diff/3600000)+'小時前';
+  return d.toLocaleDateString('zh-TW',{month:'short',day:'numeric'});
+}
+
+// ── Hub renderer ──
+function renderCalcHub(){
+  var html='<div style="font-size:20px;font-weight:700;color:var(--fg0);margin-bottom:16px">資金計算工具</div>';
+  html+='<div class="calc-grid">';
+  CALCS.forEach(function(c){
+    html+='<div class="calc-card" onclick="openCalc(\''+c.id+'\')">'
+      +'<div class="calc-card-ico">'+c.icon+'</div>'
+      +'<div class="calc-card-name">'+c.name+'</div>'
+      +'<div class="calc-card-desc">'+c.desc+'</div>'
+      +'</div>';
+  });
+  html+='</div>';
+  // recent history
+  var hist=getCalcHistory().slice(0,8);
+  if(hist.length){
+    html+='<div class="calc-hist-hd"><span>計算紀錄</span><span class="calc-hist-clear" onclick="clearCalcHistory();renderCalcHub()">清除全部</span></div>';
+    hist.forEach(function(h){
+      var c=CALCS.find(function(x){return x.id===h.type;});
+      html+='<div class="calc-hist-item" onclick="restoreCalcHistory('+h.id+')">'
+        +'<div class="calc-hist-ico">'+(c?c.icon:'📋')+'</div>'
+        +'<div class="calc-hist-info"><div class="calc-hist-name">'+(c?c.name:h.type)+' · '+h.label+'</div><div class="calc-hist-time">'+_calcHistTimeStr(h.ts)+'</div></div>'
+        +'<div class="calc-hist-del" onclick="event.stopPropagation();deleteCalcHistory('+h.id+');renderCalcHub()">✕</div>'
+        +'</div>';
+    });
+  }
+  $('calcHub').innerHTML=html;
+}
+function openCalc(id){
+  $('calcHub').style.display='none';
+  $('calcDetail').style.display='';
+  var fn={dca:renderCalcDca,loan:renderCalcLoan,pledge:renderCalcPledge,compound:renderCalcCompound,irr:renderCalcIrr,inflation:renderCalcInflation};
+  if(fn[id])fn[id]();
+}
+function closeCalc(){
+  $('calcDetail').style.display='none';
+  $('calcHub').style.display='';
+  renderCalcHub();
+}
+function restoreCalcHistory(id){
+  var h=getCalcHistory().find(function(x){return x.id===id;});
+  if(!h)return;
+  openCalc(h.type);
+  // fill inputs after render
+  setTimeout(function(){
+    var inp=h.inputs||{};
+    Object.keys(inp).forEach(function(k){
+      var el=document.getElementById('c-'+k);
+      if(el)el.value=inp[k];
+    });
+    // trigger calc
+    var calcFn={dca:calcDca,loan:calcLoan,pledge:calcPledge,compound:calcCompound,irr:_restoreIrr,inflation:calcInflation};
+    if(h.type==='irr'&&inp.flows){_restoreIrrRows(inp.flows);calcIrr();}
+    else if(calcFn[h.type])calcFn[h.type]();
+  },50);
+}
+function _calcBackHtml(){
+  return '<div class="calc-back" onclick="closeCalc()"><svg viewBox="0 0 16 16"><path d="M10 4L6 8l4 4"/></svg>返回</div>';
+}
+function _calcHistHtml(type){
+  var hist=getCalcHistory(type);
+  if(!hist.length)return '';
+  var c=CALCS.find(function(x){return x.id===type;});
+  var html='<div class="calc-hist-hd"><span>歷史紀錄</span><span class="calc-hist-clear" onclick="clearCalcHistory(\''+type+'\');openCalc(\''+type+'\')">清除</span></div>';
+  hist.slice(0,10).forEach(function(h){
+    html+='<div class="calc-hist-item" onclick="restoreCalcHistory('+h.id+')">'
+      +'<div class="calc-hist-ico">'+(c?c.icon:'📋')+'</div>'
+      +'<div class="calc-hist-info"><div class="calc-hist-name">'+h.label+'</div><div class="calc-hist-time">'+_calcHistTimeStr(h.ts)+'</div></div>'
+      +'<div class="calc-hist-del" onclick="event.stopPropagation();deleteCalcHistory('+h.id+');openCalc(\''+type+'\')">✕</div>'
+      +'</div>';
+  });
+  return html;
+}
+function _fld(id,label,type,placeholder,extra){
+  extra=extra||'';
+  return '<div class="field"><label>'+label+'</label><input id="c-'+id+'" type="'+(type||'number')+'" placeholder="'+(placeholder||'')+'" step="any" '+extra+'></div>';
+}
+function _sel(id,label,opts){
+  var html='<div class="field"><label>'+label+'</label><select id="c-'+id+'">';
+  opts.forEach(function(o){
+    var v=typeof o==='string'?o:o.v;
+    var t=typeof o==='string'?o:o.t;
+    html+='<option value="'+v+'">'+t+'</option>';
+  });
+  html+='</select></div>';
+  return html;
+}
+function _resRow(lbl,val,cls){return '<div class="calc-res-row"><span class="calc-res-lbl">'+lbl+'</span><span class="calc-res-val'+(cls?' '+cls:'')+'">'+val+'</span></div>';}
+
+// ═══════════════════════════════════
+// 1. 定期定額 DCA
+// ═══════════════════════════════════
+function renderCalcDca(){
+  var html=_calcBackHtml();
+  html+='<div class="calc-ttl"><span class="calc-ttl-ico">📊</span>定期定額計算</div>';
+  html+=_fld('dca-amt','每月投入金額','number','10,000');
+  html+=_fld('dca-rate','預期年化報酬率 (%)','number','8');
+  html+=_fld('dca-years','投資年數','number','10');
+  html+='<div class="calc-section">每年加碼設定（選填）</div>';
+  html+='<div class="calc-toggle" id="c-dca-inc-tog">'
+    +'<button class="calc-toggle-btn on" onclick="_dcaIncMode(\'fixed\')">固定金額</button>'
+    +'<button class="calc-toggle-btn" onclick="_dcaIncMode(\'pct\')">百分比</button>'
+    +'</div>';
+  html+=_fld('dca-inc','每年增加金額','number','0');
+  html+='<button class="subbtn" onclick="calcDca()">計算</button>';
+  html+='<div id="c-dca-result"></div>';
+  html+=_calcHistHtml('dca');
+  $('calcDetail').innerHTML=html;
+}
+var _dcaIncType='fixed';
+function _dcaIncMode(m){
+  _dcaIncType=m;
+  var btns=document.querySelectorAll('#c-dca-inc-tog .calc-toggle-btn');
+  btns.forEach(function(b){b.classList.remove('on');});
+  if(m==='fixed'){btns[0].classList.add('on');document.querySelector('label[for="c-dca-inc"]')||document.getElementById('c-dca-inc').previousElementSibling;var lbl=document.getElementById('c-dca-inc').parentNode.querySelector('label');if(lbl)lbl.textContent='每年增加金額';}
+  else{btns[1].classList.add('on');var lbl2=document.getElementById('c-dca-inc').parentNode.querySelector('label');if(lbl2)lbl2.textContent='每年增加比例 (%)';}
+}
+function calcDca(){
+  var monthly=parseFloat(document.getElementById('c-dca-amt').value)||0;
+  var rate=(parseFloat(document.getElementById('c-dca-rate').value)||0)/100;
+  var years=parseInt(document.getElementById('c-dca-years').value)||0;
+  var inc=parseFloat(document.getElementById('c-dca-inc').value)||0;
+  if(!monthly||!years){toast('請填入每月金額與年數');return;}
+  var monthlyRate=rate/12;
+  var total=0,invested=0,curMonthly=monthly;
+  for(var y=0;y<years;y++){
+    if(y>0){
+      if(_dcaIncType==='fixed')curMonthly+=inc;
+      else curMonthly*=(1+inc/100);
+    }
+    for(var m=0;m<12;m++){
+      invested+=curMonthly;
+      total=(total+curMonthly)*(1+monthlyRate);
+    }
+  }
+  total=Math.round(total);invested=Math.round(invested);
+  var gain=total-invested;
+  var pct=invested>0?((gain/invested)*100).toFixed(2):'0';
+  var label=fmtN(monthly)+'/月 '+years+'年 '+rate*100+'%';
+  var inputs={
+    'dca-amt':monthly,'dca-rate':rate*100,'dca-years':years,'dca-inc':inc,'dca-inc-type':_dcaIncType
+  };
+  var results={total:total,invested:invested,gain:gain,pct:pct};
+  saveCalcHistory('dca',inputs,results,label);
+  var html='<div class="calc-result">';
+  html+='<div class="calc-res-hero"><div class="calc-res-hero-lbl">最終資產</div><div class="calc-res-hero-val">'+fmtN(total)+'</div></div>';
+  html+=_resRow('總投入金額',fmtN(invested));
+  html+=_resRow('投資報酬',fmtN(gain),gain>=0?'g':'r');
+  html+=_resRow('報酬率',pct+'%',gain>=0?'g':'r');
+  if(inc>0)html+=_resRow('最終月投金額',fmtN(Math.round(curMonthly)));
+  html+='</div>';
+  document.getElementById('c-dca-result').innerHTML=html;
+}
+
+// ═══════════════════════════════════
+// 2. 信貸計算 Loan
+// ═══════════════════════════════════
+function renderCalcLoan(){
+  var html=_calcBackHtml();
+  html+='<div class="calc-ttl"><span class="calc-ttl-ico">🏦</span>信貸計算</div>';
+  html+=_fld('loan-amt','貸款金額','number','660,000');
+  html+='<div class="f2">';
+  html+=_fld('loan-rate','年利率 (%)','number','2.5');
+  html+=_fld('loan-months','期數（月）','number','84');
+  html+='</div>';
+  html+=_sel('loan-type','還款方式',[
+    {v:'equal',t:'本息均攤'},
+    {v:'principal',t:'本金均攤'},
+    {v:'interest',t:'只繳利息'}
+  ]);
+  html+=_fld('loan-fee','手續費','number','0');
+  html+='<button class="subbtn" onclick="calcLoan()">計算</button>';
+  html+='<div id="c-loan-result"></div>';
+  html+=_calcHistHtml('loan');
+  $('calcDetail').innerHTML=html;
+}
+function calcLoan(){
+  var P=parseFloat(document.getElementById('c-loan-amt').value)||0;
+  var rAnnual=parseFloat(document.getElementById('c-loan-rate').value)||0;
+  var n=parseInt(document.getElementById('c-loan-months').value)||0;
+  var type=document.getElementById('c-loan-type').value;
+  var fee=parseFloat(document.getElementById('c-loan-fee').value)||0;
+  if(!P||!n){toast('請填入貸款金額與期數');return;}
+  var i=rAnnual/100/12;
+  var monthlyFirst=0,monthlyLast=0,totalInterest=0,totalPay=0;
+  if(type==='equal'){
+    var pmt=calcPMT(P,rAnnual,n);
+    monthlyFirst=monthlyLast=Math.round(pmt);
+    totalPay=Math.round(pmt*n);
+    totalInterest=totalPay-P;
+  } else if(type==='principal'){
+    var prinPart=P/n;
+    monthlyFirst=Math.round(prinPart+P*i);
+    monthlyLast=Math.round(prinPart+prinPart*i);
+    var remain=P;
+    for(var m=0;m<n;m++){
+      totalInterest+=remain*i;
+      remain-=prinPart;
+    }
+    totalInterest=Math.round(totalInterest);
+    totalPay=P+totalInterest;
+  } else {
+    monthlyFirst=monthlyLast=Math.round(P*i);
+    totalInterest=Math.round(P*i*n);
+    totalPay=P+totalInterest;
+  }
+  // APR calculation (if fee > 0, effective rate is higher)
+  var apr=rAnnual;
+  if(fee>0&&type==='equal'){
+    var netProceeds=P-fee;
+    // Newton's method to find APR
+    var guess=rAnnual/100/12;
+    for(var iter=0;iter<100;iter++){
+      var pv=0,dpv=0;
+      for(var k=1;k<=n;k++){
+        var disc=Math.pow(1+guess,k);
+        pv+=monthlyFirst/disc;
+        dpv-=k*monthlyFirst/Math.pow(1+guess,k+1);
+      }
+      var diff=pv-netProceeds;
+      if(Math.abs(diff)<0.01)break;
+      guess=guess-diff/dpv;
+      if(guess<=0)guess=0.0001;
+    }
+    apr=Math.round(guess*12*10000)/100;
+  }
+  var typeNames={equal:'本息均攤',principal:'本金均攤',interest:'只繳利息'};
+  var label=fmtN(P)+' '+rAnnual+'% '+n+'期 '+typeNames[type];
+  var inputs={'loan-amt':P,'loan-rate':rAnnual,'loan-months':n,'loan-type':type,'loan-fee':fee};
+  var results={monthlyFirst:monthlyFirst,monthlyLast:monthlyLast,totalInterest:totalInterest,totalPay:totalPay,apr:apr};
+  saveCalcHistory('loan',inputs,results,label);
+  var html='<div class="calc-result">';
+  html+='<div class="calc-res-hero"><div class="calc-res-hero-lbl">每月還款</div><div class="calc-res-hero-val">'+fmtN(monthlyFirst)+'</div></div>';
+  if(type==='principal')html+=_resRow('最後一期',fmtN(monthlyLast));
+  html+=_resRow('總利息支出',fmtN(totalInterest),'r');
+  html+=_resRow('總還款金額',fmtN(totalPay));
+  if(fee>0)html+=_resRow('手續費',fmtN(fee));
+  html+=_resRow('總費用（含手續費）',fmtN(totalPay+fee),'r');
+  if(fee>0)html+=_resRow('實際年利率 APR',apr+'%','r');
+  html+='</div>';
+  document.getElementById('c-loan-result').innerHTML=html;
+}
+
+// ═══════════════════════════════════
+// 3. 質押計算 Pledge
+// ═══════════════════════════════════
+function renderCalcPledge(){
+  var html=_calcBackHtml();
+  html+='<div class="calc-ttl"><span class="calc-ttl-ico">🔒</span>質押計算</div>';
+  html+=_fld('ple-val','質押股票市值','number','1,000,000');
+  html+='<div class="f2">';
+  html+=_fld('ple-ltv','貸款成數 LTV (%)','number','60');
+  html+=_fld('ple-maint','維持率 (%)','number','130');
+  html+='</div>';
+  html+='<div class="f2">';
+  html+=_fld('ple-rate','年利率 (%)','number','2.5');
+  html+=_fld('ple-shares','持有股數','number','1000');
+  html+='</div>';
+  html+='<button class="subbtn" onclick="calcPledge()">計算</button>';
+  html+='<div id="c-ple-result"></div>';
+  html+=_calcHistHtml('pledge');
+  $('calcDetail').innerHTML=html;
+}
+function calcPledge(){
+  var val=parseFloat(document.getElementById('c-ple-val').value)||0;
+  var ltv=(parseFloat(document.getElementById('c-ple-ltv').value)||0)/100;
+  var maint=(parseFloat(document.getElementById('c-ple-maint').value)||0)/100;
+  var rate=(parseFloat(document.getElementById('c-ple-rate').value)||0)/100;
+  var shares=parseFloat(document.getElementById('c-ple-shares').value)||0;
+  if(!val||!ltv){toast('請填入股票市值與貸款成數');return;}
+  var maxLoan=Math.round(val*ltv);
+  var monthlyInterest=Math.round(maxLoan*rate/12);
+  var yearlyInterest=Math.round(maxLoan*rate);
+  // margin call: when stock value drops to loan / maintenance ratio
+  var marginVal=maint>0?Math.round(maxLoan/maint):0;
+  var marginPrice=shares>0&&maint>0?Math.round(maxLoan/maint/shares*100)/100:0;
+  var dropPct=val>0?((1-marginVal/val)*100).toFixed(1):'0';
+  var label=fmtN(val)+' LTV '+ltv*100+'%';
+  var inputs={'ple-val':val,'ple-ltv':ltv*100,'ple-maint':maint*100,'ple-rate':rate*100,'ple-shares':shares};
+  var results={maxLoan:maxLoan,monthlyInterest:monthlyInterest,yearlyInterest:yearlyInterest,marginVal:marginVal,marginPrice:marginPrice};
+  saveCalcHistory('pledge',inputs,results,label);
+  var html='<div class="calc-result">';
+  html+='<div class="calc-res-hero"><div class="calc-res-hero-lbl">最高可借金額</div><div class="calc-res-hero-val">'+fmtN(maxLoan)+'</div></div>';
+  html+=_resRow('每月利息',fmtN(monthlyInterest));
+  html+=_resRow('每年利息',fmtN(yearlyInterest));
+  if(maint>0){
+    html+=_resRow('追繳市值門檻',fmtN(marginVal),'r');
+    if(marginPrice>0)html+=_resRow('追繳股價',marginPrice.toLocaleString(),'r');
+    html+=_resRow('容許下跌幅度',dropPct+'%');
+  }
+  html+='</div>';
+  document.getElementById('c-ple-result').innerHTML=html;
+}
+
+// ═══════════════════════════════════
+// 4. 複利計算 Compound
+// ═══════════════════════════════════
+function renderCalcCompound(){
+  var html=_calcBackHtml();
+  html+='<div class="calc-ttl"><span class="calc-ttl-ico">📈</span>複利計算</div>';
+  html+=_fld('cpd-principal','本金','number','100,000');
+  html+=_fld('cpd-rate','年利率 (%)','number','5');
+  html+=_sel('cpd-freq','複利頻率',[
+    {v:'12',t:'每月複利'},
+    {v:'4',t:'每季複利'},
+    {v:'1',t:'每年複利'}
+  ]);
+  html+=_fld('cpd-years','投資年數','number','10');
+  html+='<button class="subbtn" onclick="calcCompound()">計算</button>';
+  html+='<div id="c-cpd-result"></div>';
+  html+=_calcHistHtml('compound');
+  $('calcDetail').innerHTML=html;
+}
+function calcCompound(){
+  var P=parseFloat(document.getElementById('c-cpd-principal').value)||0;
+  var r=(parseFloat(document.getElementById('c-cpd-rate').value)||0)/100;
+  var n=parseInt(document.getElementById('c-cpd-freq').value)||1;
+  var t=parseFloat(document.getElementById('c-cpd-years').value)||0;
+  if(!P||!t){toast('請填入本金與年數');return;}
+  var FV=P*Math.pow(1+r/n,n*t);
+  FV=Math.round(FV);
+  var interest=FV-P;
+  var effectiveRate=((Math.pow(1+r/n,n)-1)*100).toFixed(2);
+  var multiple=(FV/P).toFixed(2);
+  var freqNames={'12':'月複利','4':'季複利','1':'年複利'};
+  var label=fmtN(P)+' '+r*100+'% '+t+'年';
+  var inputs={'cpd-principal':P,'cpd-rate':r*100,'cpd-freq':n,'cpd-years':t};
+  var results={FV:FV,interest:interest,effectiveRate:effectiveRate,multiple:multiple};
+  saveCalcHistory('compound',inputs,results,label);
+  var html='<div class="calc-result">';
+  html+='<div class="calc-res-hero"><div class="calc-res-hero-lbl">最終金額</div><div class="calc-res-hero-val">'+fmtN(FV)+'</div></div>';
+  html+=_resRow('本金',fmtN(P));
+  html+=_resRow('利息收入',fmtN(interest),'g');
+  html+=_resRow('成長倍數',multiple+'x');
+  html+=_resRow('有效年利率',effectiveRate+'%');
+  html+='</div>';
+  document.getElementById('c-cpd-result').innerHTML=html;
+}
+
+// ═══════════════════════════════════
+// 5. IRR計算
+// ═══════════════════════════════════
+var _irrRows=[];
+function renderCalcIrr(){
+  _irrRows=[
+    {date:new Date().toISOString().slice(0,10),amount:-100000},
+    {date:new Date(Date.now()+365*86400000).toISOString().slice(0,10),amount:110000}
+  ];
+  var html=_calcBackHtml();
+  html+='<div class="calc-ttl"><span class="calc-ttl-ico">📉</span>IRR 投資報酬率計算</div>';
+  html+='<div style="font-size:12px;color:var(--fg2);margin-bottom:12px">負數 = 投入（支出），正數 = 回收（收入）</div>';
+  html+='<div class="irr-rows" id="c-irr-rows"></div>';
+  html+='<button class="irr-add-btn" onclick="_addIrrRow()">+ 新增現金流</button>';
+  html+='<button class="subbtn" onclick="calcIrr()">計算 IRR</button>';
+  html+='<div id="c-irr-result"></div>';
+  html+=_calcHistHtml('irr');
+  $('calcDetail').innerHTML=html;
+  _renderIrrRows();
+}
+function _renderIrrRows(){
+  var el=document.getElementById('c-irr-rows');if(!el)return;
+  var html='';
+  _irrRows.forEach(function(r,i){
+    html+='<div class="irr-row">'
+      +'<input type="date" value="'+r.date+'" onchange="_irrRows['+i+'].date=this.value">'
+      +'<input type="number" value="'+r.amount+'" step="any" placeholder="金額" onchange="_irrRows['+i+'].amount=parseFloat(this.value)||0">'
+      +(_irrRows.length>2?'<button class="irr-del" onclick="_delIrrRow('+i+')">✕</button>':'')
+      +'</div>';
+  });
+  el.innerHTML=html;
+}
+function _addIrrRow(){
+  var lastDate=_irrRows.length?_irrRows[_irrRows.length-1].date:new Date().toISOString().slice(0,10);
+  var d=new Date(lastDate);d.setFullYear(d.getFullYear()+1);
+  _irrRows.push({date:d.toISOString().slice(0,10),amount:0});
+  _renderIrrRows();
+}
+function _delIrrRow(i){_irrRows.splice(i,1);_renderIrrRows();}
+function _restoreIrrRows(flows){_irrRows=flows.map(function(f){return{date:f.date,amount:f.amount};});_renderIrrRows();}
+function _xirr(flows){
+  // Newton-Raphson XIRR
+  if(flows.length<2)return null;
+  var dates=flows.map(function(f){return new Date(f.date).getTime();});
+  var amts=flows.map(function(f){return f.amount;});
+  var d0=dates[0];
+  var guess=0.1;
+  for(var iter=0;iter<200;iter++){
+    var fVal=0,fDeriv=0;
+    for(var i=0;i<flows.length;i++){
+      var t=(dates[i]-d0)/(365.25*86400000);
+      var disc=Math.pow(1+guess,t);
+      if(disc===0)disc=1e-10;
+      fVal+=amts[i]/disc;
+      if(t!==0)fDeriv-=t*amts[i]/Math.pow(1+guess,t+1);
+    }
+    if(Math.abs(fVal)<0.01)return guess;
+    if(fDeriv===0)break;
+    var newGuess=guess-fVal/fDeriv;
+    if(newGuess<-0.99)newGuess=-0.99;
+    if(newGuess>10)newGuess=10;
+    guess=newGuess;
+  }
+  // fallback: bisection
+  var lo=-0.99,hi=10;
+  for(var bi=0;bi<200;bi++){
+    var mid=(lo+hi)/2;
+    var fv=0;
+    for(var j=0;j<flows.length;j++){
+      var tj=(dates[j]-d0)/(365.25*86400000);
+      fv+=amts[j]/Math.pow(1+mid,tj);
+    }
+    if(Math.abs(fv)<0.01)return mid;
+    if(fv>0)lo=mid;else hi=mid;
+  }
+  return null;
+}
+function calcIrr(){
+  // sync from DOM
+  var rows=document.querySelectorAll('#c-irr-rows .irr-row');
+  rows.forEach(function(r,i){
+    var inputs=r.querySelectorAll('input');
+    _irrRows[i].date=inputs[0].value;
+    _irrRows[i].amount=parseFloat(inputs[1].value)||0;
+  });
+  if(_irrRows.length<2){toast('至少需要兩筆現金流');return;}
+  var sorted=_irrRows.slice().sort(function(a,b){return new Date(a.date)-new Date(b.date);});
+  var irr=_xirr(sorted);
+  var totalIn=0,totalOut=0;
+  sorted.forEach(function(f){
+    if(f.amount<0)totalIn+=Math.abs(f.amount);
+    else totalOut+=f.amount;
+  });
+  var netGain=totalOut-totalIn;
+  var label=fmtN(totalIn)+'投入 → '+fmtN(totalOut)+'回收';
+  saveCalcHistory('irr',{flows:_irrRows},{irr:irr,totalIn:totalIn,totalOut:totalOut,netGain:netGain},label);
+  var html='<div class="calc-result">';
+  if(irr!==null){
+    var irrPct=(irr*100).toFixed(2);
+    html+='<div class="calc-res-hero"><div class="calc-res-hero-lbl">年化報酬率 (IRR)</div><div class="calc-res-hero-val'+(irr>=0?'':' r')+'">'+irrPct+'%</div></div>';
+  } else {
+    html+='<div class="calc-res-hero"><div class="calc-res-hero-lbl">年化報酬率 (IRR)</div><div class="calc-res-hero-val r">無法計算</div></div>';
+  }
+  html+=_resRow('總投入',fmtN(totalIn));
+  html+=_resRow('總回收',fmtN(totalOut));
+  html+=_resRow('淨損益',fmtN(Math.abs(netGain)),netGain>=0?'g':'r');
+  html+='</div>';
+  document.getElementById('c-irr-result').innerHTML=html;
+}
+
+// ═══════════════════════════════════
+// 6. 通膨計算 Inflation
+// ═══════════════════════════════════
+function renderCalcInflation(){
+  var html=_calcBackHtml();
+  html+='<div class="calc-ttl"><span class="calc-ttl-ico">💸</span>通膨購買力計算</div>';
+  html+=_fld('inf-amt','現有金額','number','1,000,000');
+  html+='<div class="f2">';
+  html+=_fld('inf-rate','年通膨率 (%)','number','2');
+  html+=_fld('inf-years','年數','number','20');
+  html+='</div>';
+  html+='<button class="subbtn" onclick="calcInflation()">計算</button>';
+  html+='<div id="c-inf-result"></div>';
+  html+=_calcHistHtml('inflation');
+  $('calcDetail').innerHTML=html;
+}
+function calcInflation(){
+  var amt=parseFloat(document.getElementById('c-inf-amt').value)||0;
+  var rate=(parseFloat(document.getElementById('c-inf-rate').value)||0)/100;
+  var years=parseInt(document.getElementById('c-inf-years').value)||0;
+  if(!amt||!years){toast('請填入金額與年數');return;}
+  // future price of today's goods
+  var futurePrice=Math.round(amt*Math.pow(1+rate,years));
+  // purchasing power of current amount in the future
+  var futurePower=Math.round(amt/Math.pow(1+rate,years));
+  var lossPct=((1-futurePower/amt)*100).toFixed(1);
+  var lossAmt=amt-futurePower;
+  var label=fmtN(amt)+' 通膨'+rate*100+'% '+years+'年';
+  var inputs={'inf-amt':amt,'inf-rate':rate*100,'inf-years':years};
+  var results={futurePrice:futurePrice,futurePower:futurePower,lossPct:lossPct,lossAmt:lossAmt};
+  saveCalcHistory('inflation',inputs,results,label);
+  var html='<div class="calc-result">';
+  html+='<div class="calc-res-hero"><div class="calc-res-hero-lbl">'+years+'年後的購買力</div><div class="calc-res-hero-val r">'+fmtN(futurePower)+'</div></div>';
+  html+=_resRow('現有金額',fmtN(amt));
+  html+=_resRow(years+'年後等值物價',fmtN(futurePrice));
+  html+=_resRow('購買力損失',fmtN(lossAmt),'r');
+  html+=_resRow('損失比例',lossPct+'%','r');
+  html+='</div>';
+  document.getElementById('c-inf-result').innerHTML=html;
+}
 
 // ── PWA: Service Worker registration ──
 if('serviceWorker' in navigator){
