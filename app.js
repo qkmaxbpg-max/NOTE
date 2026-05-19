@@ -901,25 +901,47 @@ function updateHero(){
   $('heroNum').textContent=st.masked?'••••••':fmtAmt(cvt(nw));
   var cv=$('chart-ttl');
   if(cv)cv.textContent=fmtN(cvt(nw));
-  // ── 今日資產變動 ──
+  // ── 今日資產變動（與前一天淨資產比較）──
   var heroChipEl=$('heroChip');
   if(heroChipEl){
     var today=new Date().toISOString().slice(0,10);
-    var todayYM=today.slice(0,7);
-    var curYM=st.curYear+'-'+MONTHS[st.curMonth];
-    var todayChange=0;
-    if(curYM===todayYM){
-      todayChange=txs.filter(function(t){return t.date===today&&t.cat!=='轉帳';})
-        .reduce(function(s,t){return s+t.amt;},0);
+    var nwKey='fintrack_nw_';
+    var prevNW=null;
+    // find most recent stored net worth before today
+    try{
+      var stored=localStorage.getItem(nwKey+today);
+      // check yesterday first, then scan back up to 7 days
+      if(!stored){
+        for(var di=1;di<=7;di++){
+          var d=new Date();d.setDate(d.getDate()-di);
+          var dk=d.toISOString().slice(0,10);
+          var v=localStorage.getItem(nwKey+dk);
+          if(v){prevNW=parseFloat(v);break;}
+        }
+      } else {
+        // already stored today's opening — use it as base
+        prevNW=parseFloat(stored);
+      }
+    }catch(e){}
+    // store today's net worth on first load of the day
+    if(!localStorage.getItem(nwKey+today)){
+      try{localStorage.setItem(nwKey+today,String(nw));}catch(e){}
+      // cleanup old entries (keep last 10 days)
+      try{
+        for(var ci=10;ci<=30;ci++){
+          var cd=new Date();cd.setDate(cd.getDate()-ci);
+          localStorage.removeItem(nwKey+cd.toISOString().slice(0,10));
+        }
+      }catch(e){}
     }
-    if(todayChange===0){
+    var todayChange=prevNW!==null?(nw-prevNW):0;
+    if(todayChange===0||prevNW===null){
       heroChipEl.className='chip up';
       heroChipEl.textContent='▲ 0 +0.00%';
     } else {
-      var base=nw-todayChange;
-      var pct=base!==0?(Math.abs(todayChange)/Math.abs(base)*100).toFixed(2):'0.00';
+      var pct=prevNW!==0?(Math.abs(todayChange)/Math.abs(prevNW)*100).toFixed(2):'0.00';
       heroChipEl.className='chip '+(todayChange>=0?'up':'down');
-      heroChipEl.textContent=(todayChange>=0?'▲ +':'▼ ')+fmtN(cvt(Math.abs(todayChange)))+' '+(todayChange>=0?'+':'-')+pct+'%';
+      heroChipEl.textContent=(todayChange>=0?'▲ +':'▼ -')+fmtN(cvt(Math.abs(todayChange)))+' '+(todayChange>=0?'+':'-')+pct+'%';
     }
   }
 }
@@ -2703,12 +2725,20 @@ function delTx(e,idx){
 function openModal(type){
   if(type==='tx'){
     $('f-date').value=new Date().toISOString().slice(0,10);
+    $('f-amt').value='';$('f-note').value='';
     $('f-cat').value='';
     $('f-cat-btn').textContent='選擇類別';
     $('f-cat-btn').classList.remove('selected');
     $('f-acct').value='';
     $('f-acct-btn').textContent='選擇帳戶';
     $('f-acct-btn').classList.remove('selected');
+    $('rec-tog').classList.remove('on');
+    st.txType='e';
+    document.querySelectorAll('.tbtn').forEach(function(b){b.classList.remove('e','i','buy','sell','tf');});
+    var firstBtn=document.querySelector('.tbtn');if(firstBtn)firstBtn.classList.add('e');
+    $('tx-normal-fields').style.display='block';
+    $('tx-buy-fields').style.display='none';
+    $('tx-sell-fields').style.display='none';
     $('m-tx').classList.add('on');
   }
   if(type==='stock'){clearStockSelection('s');$('s-search').value='';$('s-paid-ccy').value='TWD';setPaidCcy('s','TWD');$('s-sk-src-id').value='';$('s-sk-src-btn').textContent='選擇扣款帳戶';$('s-sk-src-btn').classList.remove('selected');populateFundSourceSelect('s-fund-source');$('m-stock').classList.add('on');}
