@@ -4574,17 +4574,20 @@ function renderCalcHub(){
       +'</div>';
   });
   html+='</div>';
-  // recent history
-  var hist=getCalcHistory().slice(0,8);
-  if(hist.length){
+  // history grouped by type
+  var allHist=getCalcHistory();
+  if(allHist.length){
     html+='<div class="calc-hist-hd"><span>計算紀錄</span><span class="calc-hist-clear" onclick="clearCalcHistory();renderCalcHub()">清除全部</span></div>';
-    hist.forEach(function(h){
-      var c=CALCS.find(function(x){return x.id===h.type;});
-      html+='<div class="calc-hist-item" onclick="restoreCalcHistory('+h.id+')">'
-        +'<div class="calc-hist-ico">'+(c?c.icon:'📋')+'</div>'
-        +'<div class="calc-hist-info"><div class="calc-hist-name">'+(c?c.name:h.type)+' · '+h.label+'</div><div class="calc-hist-time">'+_calcHistTimeStr(h.ts)+'</div></div>'
-        +'<div class="calc-hist-del" onclick="event.stopPropagation();deleteCalcHistory('+h.id+');renderCalcHub()">✕</div>'
-        +'</div>';
+    CALCS.forEach(function(c){
+      var items=allHist.filter(function(h){return h.type===c.id;});
+      if(!items.length)return;
+      html+='<div style="font-size:12px;font-weight:600;color:var(--fg3);margin:14px 0 8px;display:flex;align-items:center;gap:6px"><span>'+c.icon+'</span>'+c.name+'</div>';
+      items.slice(0,5).forEach(function(h){
+        html+='<div class="calc-hist-item" onclick="restoreCalcHistory('+h.id+')">'
+          +'<div class="calc-hist-info"><div class="calc-hist-name">'+h.label+'</div><div class="calc-hist-time">'+_calcHistTimeStr(h.ts)+'</div></div>'
+          +'<div class="calc-hist-del" onclick="event.stopPropagation();deleteCalcHistory('+h.id+');renderCalcHub()">✕</div>'
+          +'</div>';
+      });
     });
   }
   $('calcHub').innerHTML=html;
