@@ -635,12 +635,16 @@ function api(method,url,body){
   if(method==='POST'&&url==='/api/transactions'){
     var txRow={user_id:st.userId,date:body.date,name:body.name,category:body.category,amount:body.amount,note:body.note||'',icon:body.icon||'',recurring:!!body.recurring,account_id:body.account_id||null};
     // Update account balance (skip if _skipBal flag is set)
+    var balUpdate=Promise.resolve();
     if(body.account_id&&!body._skipBal){
-      sb.from('accounts').select('balance').eq('id',body.account_id).single().then(function(r){
-        if(r.data) sb.from('accounts').update({balance:r.data.balance+body.amount}).eq('id',body.account_id).then(function(){});
+      balUpdate=sb.from('accounts').select('balance').eq('id',body.account_id).single().then(function(r){
+        if(r.data) return sb.from('accounts').update({balance:r.data.balance+body.amount}).eq('id',body.account_id);
       });
     }
-    return sb.from('transactions').insert(txRow).select().single().then(function(res){return res.data||{};});
+    return Promise.all([
+      sb.from('transactions').insert(txRow).select().single().then(function(res){return res.data||{};}),
+      balUpdate
+    ]).then(function(arr){return arr[0];});
   }
   // PUT /api/transactions/:id
   m=url.match(/^\/api\/transactions\/(\d+)$/);
