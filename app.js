@@ -5,6 +5,11 @@ var sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON);
 
 var MONTHS=['01','02','03','04','05','06','07','08','09','10','11','12'];
 var DOTS=['#1db954','#3d8ef8','#f5a623','#a78bfa','#2dd4bf','#f25c5c','#34d399','#fb923c'];
+function nextDot(items){
+  var used={};(items||[]).forEach(function(it){if(it.dot)used[it.dot]=true;});
+  for(var i=0;i<DOTS.length;i++){if(!used[DOTS[i]])return DOTS[i];}
+  return DOTS[(items?items.length:0)%DOTS.length];
+}
 var DEBT_TYPES=['信用卡','信用貸款','股票質押','房貸','車貸','其他貸款','應付款','其他負債'];
 var LOAN_TYPES=['信用貸款','股票質押','房貸','車貸','其他貸款'];
 var CCYS=[
@@ -1246,7 +1251,7 @@ function submitRefi(){
   api('POST','/api/accounts',{
     category:'debt',name:newName,type:it.type,balance:-Math.abs(newBal),
     description:monthly?('每月'+(isInt?'利息':'還')+' '+Math.round(monthly).toLocaleString()):'',
-    dot_color:DOTS[data.debt.items.length%DOTS.length],stat:it.stat,loan_data:newLoanData
+    dot_color:nextDot(data.debt.items),stat:it.stat,loan_data:newLoanData
   }).then(function(res){
     var newId=res.id;
     var oldLoan=Object.assign({},it.loan,{status:'refinanced',refinanced_to:newId,refinanced_date:dateStr});
@@ -1481,7 +1486,7 @@ function submitAddAcct(){
   var name=$('add-name').value.trim(),bal=parseFloat($('add-bal').value)||0,desc=$('add-desc').value.trim();
   var stat=$('add-stat-tog').classList.contains('on'),key=st.addL1,type=st.addL3;
   if(!name){toast('請輸入帳戶名稱');return;}
-  var dot=DOTS[data[key].items.length%DOTS.length],sign=(key==='debt')?-1:1;
+  var dot=nextDot(data[key].items),sign=(key==='debt')?-1:1;
   var payload={category:key,name:name,type:type,balance:sign*Math.abs(bal),description:desc,dot_color:dot,stat:stat};
   var addCcy=$('add-ccy').value;
   if(addCcy!=='TWD'&&type!=='股票'){
@@ -2347,7 +2352,7 @@ function submitStock(){
   var paidNative=paid;
   if(isUs&&paidCcy==='TWD') paidNative=paid/st.fxRate;
   else if(!isUs&&paidCcy==='USD') paidNative=paid*st.fxRate;
-  var nm=$('s-nm').value.trim()||tk,dot=DOTS[data.invest.items.length%DOTS.length];
+  var nm=$('s-nm').value.trim()||tk,dot=nextDot(data.invest.items);
   var curPrice=pr;
   var cpEl=$('s-selected-card');
   if(cpEl&&cpEl._livePrice) curPrice=cpEl._livePrice;
@@ -2920,7 +2925,7 @@ function submitTxBuy(){
   } else {
     // create new stock account
     var mktVal=isUs?Math.round(sh*curPrice*st.fxRate):Math.round(sh*curPrice);
-    var dot=DOTS[data.invest.items.length%DOTS.length];
+    var dot=nextDot(data.invest.items);
     api('POST','/api/accounts',{
       category:'invest',name:tk,type:'股票',balance:mktVal,description:tk,dot_color:dot,stat:true,
       stock_data:(function(){var sd={ticker:tk,shares:sh,avgPrice:pr,paid:paidNative,curPrice:curPrice,fee:fee,isUs:isUs,leverage:1,fundSources:{}};if(txbFundSrc)sd.fundSources[txbFundSrc]={shares:sh,paid:paidNative};return sd;})()
