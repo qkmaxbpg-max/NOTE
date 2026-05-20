@@ -10,7 +10,6 @@ function nextDot(items){
   for(var i=0;i<DOTS.length;i++){if(!used[DOTS[i]])return DOTS[i];}
   return DOTS[(items?items.length:0)%DOTS.length];
 }
-var DEBT_TYPES=['信用卡','信用貸款','股票質押','房貸','車貸','其他貸款','應付款','其他負債'];
 var LOAN_TYPES=['信用貸款','股票質押','房貸','車貸','其他貸款'];
 var CCYS=[
   {code:'TWD',name:'台幣',sym:'NT$'},{code:'USD',name:'美元',sym:'US$'},
@@ -372,12 +371,6 @@ function openUserEdit(uid){
   var tc=localStorage.getItem('ft_theme_'+uid)||'';
   renderThemeGrid(tc);
   $('m-user-edit').classList.add('on');
-}
-function avatarHTML(src,cls){
-  if(!src) src=AVATARS[0];
-  // legacy emoji fallback
-  if(src.indexOf('avatars/')<0) return '<span class="'+(cls||'')+'">'+src+'</span>';
-  return '<img src="'+src+'" class="'+(cls||'')+'" draggable="false">';
 }
 var _avPage=0;
 function renderAvatarGrid(selected){
@@ -1204,7 +1197,7 @@ function submitPayoff(){
     $('m-payoff').classList.remove('on');
     return loadTx();
   }).then(function(){
-    renderOverview();renderTxList();
+    renderOverview();renderTx();
     if($('leveragePage').style.display==='flex')renderLeverage();
     toast(isFull?'✓ 已還清 '+it.name:'✓ 已還款 NT$ '+fmtN(amount));
   });
@@ -2174,7 +2167,6 @@ function delStockTx(mi){
     var sh=parseFloat(entry.shares)||0;
     var noteMatch=(entry.action==='buy')?entry.ticker:'';
     if(entry.action==='buy'){
-      var prMatch=entry.txIds.length>0?null:null;
       // parse price from note: "ticker +shares股 @price"
       return sb.from('transactions').select('note').eq('id',entry.txIds[0]).maybeSingle().then(function(){
         // tx already deleted, parse from entry data
@@ -2860,9 +2852,6 @@ function onTxBuyStockChange(){
     }
   }
 }
-function calcTxBuy(){
-  // simple preview could be added later
-}
 function submitTxBuy(){
   var stockVal=$('tx-buy-stock').value;
   var sh=parseFloat($('tx-buy-sh').value)||0;
@@ -3198,8 +3187,6 @@ function reorderItems(fromId,toId){
   var fromCat=categories.find(function(c){return c.id===fromId;});
   var toCat=categories.find(function(c){return c.id===toId;});
   if(!fromCat||!toCat)return;
-  var grp=toCat.cat_group||'';
-  var sameGrp=categories.filter(function(c){return(c.cat_group||'')===grp;});
   var fi=categories.indexOf(fromCat);
   var ti=categories.indexOf(toCat);
   categories.splice(fi,1);
@@ -3729,7 +3716,6 @@ function renderStockChart(period){
 // ── Hierarchical Account Picker ──
 var apState={target:null,level:1,category:null,group:null};
 var CAT_NAMES={liquid:'流動資金',invest:'投資',fixed:'固定資產',recv:'應收款',debt:'負債'};
-var CAT_ICONS={liquid:'💰',invest:'📈',fixed:'🏠',recv:'📥',debt:'💳'};
 
 function openAcctPicker(target){
   apState={target:target,level:1,category:null,group:null};
@@ -3754,14 +3740,6 @@ function apDrill1(cat){
   $('ap-title').textContent=CAT_NAMES[cat];
   $('ap-back').style.display='';
   renderApAccounts(data[cat].items);
-}
-
-function apDrill2(grp){
-  apState.level=3;apState.group=grp;
-  $('ap-title').textContent=grp;
-  $('ap-back').style.display='';
-  var items=data[apState.category].items.filter(function(it){return it.group===grp;});
-  renderApAccounts(items);
 }
 
 function renderApAccounts(items){
@@ -4066,21 +4044,6 @@ function getStocksByFund(loanId){
   });
   return result;
 }
-function getAllLevStocks(){
-  var ids={};
-  getLoanAccounts().forEach(function(l){ids[l.id]=true;});
-  return data.invest.items.filter(function(it){
-    if(!it.sk) return false;
-    var fs=_getFundSources(it.sk);
-    return Object.keys(fs).some(function(lid){return ids[lid]&&fs[lid].shares>0;});
-  });
-}
-
-function levCalcPMT(P,rateAnnual,n){
-  var i=rateAnnual/100/12;
-  if(i===0)return P/n;
-  return P*i*Math.pow(1+i,n)/(Math.pow(1+i,n)-1);
-}
 function levAmortSchedule(P,rateAnnual,n,pmtOvr,repayType){
   var i=rateAnnual/100/12;
   var isInt=(repayType||'').indexOf('只繳利息')>=0;
@@ -4091,7 +4054,7 @@ function levAmortSchedule(P,rateAnnual,n,pmtOvr,repayType){
     for(var k=1;k<=periods;k++) sched.push({period:k,payment:mi,principal:0,interest:mi,remaining:Math.round(P)});
     return sched;
   }
-  var pmt=pmtOvr||levCalcPMT(P,rateAnnual,n);
+  var pmt=pmtOvr||calcPMT(P,rateAnnual,n);
   var sched=[],rem=P;
   for(var k=1;k<=n;k++){
     var interest=Math.round(rem*i*100)/100;
@@ -4624,9 +4587,8 @@ function restoreCalcHistory(id){
       if(el)el.value=inp[k];
     });
     // trigger calc
-    var calcFn={dca:calcDca,loan:calcLoan,pledge:calcPledge,compound:calcCompound,irr:_restoreIrr,inflation:calcInflation};
     if(h.type==='irr'&&inp.flows){_restoreIrrRows(inp.flows);calcIrr();}
-    else if(calcFn[h.type])calcFn[h.type]();
+    else{var calcFn={dca:calcDca,loan:calcLoan,pledge:calcPledge,compound:calcCompound,inflation:calcInflation};if(calcFn[h.type])calcFn[h.type]();}
   },50);
 }
 function _calcBackHtml(){
