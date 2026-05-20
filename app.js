@@ -907,7 +907,7 @@ function updateHero(){
   var heroChipEl=$('heroChip');
   if(heroChipEl){
     var today=new Date().toISOString().slice(0,10);
-    var nwKey='fintrack_nw_';
+    var nwKey='fintrack_nw_'+st.userId+'_';
     var prevNW=null;
     // find most recent stored net worth before today
     try{
@@ -4533,25 +4533,25 @@ var CALCS=[
   {id:'irr',name:'IRR計算',icon:'📉',desc:'內部報酬率計算'},
   {id:'inflation',name:'通膨計算',icon:'💸',desc:'購買力變化試算'}
 ];
-var _calcHistKey='ft_calc_history';
+function _calcHistKey(){return 'ft_calc_history_'+(st.userId||'');}
 
 // ── History helpers ──
 function getCalcHistory(type){
-  try{var all=JSON.parse(localStorage.getItem(_calcHistKey)||'[]');return type?all.filter(function(h){return h.type===type;}):all;}catch(e){return[];}
+  try{var all=JSON.parse(localStorage.getItem(_calcHistKey())||'[]');return type?all.filter(function(h){return h.type===type;}):all;}catch(e){return[];}
 }
 function saveCalcHistory(type,inputs,results,label){
   var all=getCalcHistory();
   all.unshift({id:Date.now(),type:type,ts:new Date().toISOString(),inputs:inputs,results:results,label:label||''});
   if(all.length>50)all=all.slice(0,50);
-  try{localStorage.setItem(_calcHistKey,JSON.stringify(all));}catch(e){}
+  try{localStorage.setItem(_calcHistKey(),JSON.stringify(all));}catch(e){}
 }
 function deleteCalcHistory(id){
   var all=getCalcHistory().filter(function(h){return h.id!==id;});
-  try{localStorage.setItem(_calcHistKey,JSON.stringify(all));}catch(e){}
+  try{localStorage.setItem(_calcHistKey(),JSON.stringify(all));}catch(e){}
 }
 function clearCalcHistory(type){
-  if(type){var all=getCalcHistory().filter(function(h){return h.type!==type;});try{localStorage.setItem(_calcHistKey,JSON.stringify(all));}catch(e){}}
-  else{try{localStorage.removeItem(_calcHistKey);}catch(e){}}
+  if(type){var all=getCalcHistory().filter(function(h){return h.type!==type;});try{localStorage.setItem(_calcHistKey(),JSON.stringify(all));}catch(e){}}
+  else{try{localStorage.removeItem(_calcHistKey());}catch(e){}}
 }
 function _calcHistTimeStr(ts){
   var d=new Date(ts);var now=new Date();
