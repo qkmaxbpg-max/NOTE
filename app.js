@@ -1433,6 +1433,27 @@ function calcPMT(P,rateAnnual,n){
   if(i===0)return P/n;
   return P*i*Math.pow(1+i,n)/(Math.pow(1+i,n)-1);
 }
+// APR via IRR (Newton's method): find monthly rate r where PV(payments)=principal-fee
+function calcLoanAPR(principal,pmt,months,fee){
+  if(!principal||!pmt||!months) return 0;
+  var net=principal-(fee||0); // actual amount received
+  var r=pmt>0?(pmt*months/net-1)/months:0.003; // initial guess
+  if(r<=0) r=0.003;
+  for(var iter=0;iter<100;iter++){
+    var pv=0,dpv=0;
+    for(var t=1;t<=months;t++){
+      var d=Math.pow(1+r,t);
+      pv+=pmt/d;
+      dpv-=t*pmt/Math.pow(1+r,t+1);
+    }
+    var f=pv-net;
+    if(Math.abs(f)<0.01) break;
+    var rNew=r-f/dpv;
+    if(rNew<=0) rNew=r/2;
+    r=rNew;
+  }
+  return r*12*100; // annualize
+}
 function calcAddLoan(){
   var P=parseFloat($('add-bal').value)||0;
   var rAnnual=parseFloat($('add-rate').value)||0;
@@ -2023,6 +2044,7 @@ function renderStocks(){
       +'<div class="sk-exp-row"><span class="sk-exp-lbl">現值</span><span class="sk-exp-val">'+ccySym()+' '+fmtN(cvt(curVal))+'</span></div>'
       +'<div class="sk-exp-row"><span class="sk-exp-lbl">未實現損益</span>'
       +'<span class="sk-exp-val '+(gain>=0?'g':'r')+'">'+(gain>=0?'+':'')+fmtN(cvt(Math.abs(gain)))+' ('+(gain>=0?'+':'')+pct+'%)</span></div>'
+      +'<div class="sk-exp-act"><span class="sk-act-link" onclick="event.stopPropagation();goTxBuyStock('+it.id+')">前往新增</span><span class="sk-act-link" onclick="event.stopPropagation();openSkInventory('+it.id+')">看庫存明細</span></div>'
       +'</div>';
   }
   $('tw-stocks').innerHTML=tw.map(function(it,i){try{return skBlock(it,'tw'+i);}catch(e){console.error('skBlock tw error',e,it);return '';}}).join('')||'<div class="empty-note">尚未新增台股持倉</div>';
@@ -2335,6 +2357,37 @@ function calcSkFee(){
   $('sk-mkt-hint').textContent=sh.toLocaleString()+' 股 × '+curPrice;
   box.style.display='block';
 }
+function calcTxBuyFee(){
+  var sh=parseFloat($('tx-buy-sh').value)||0,pr=parseFloat($('tx-buy-pr').value)||0,paid=parseFloat($('tx-buy-paid').value)||0;
+  var box=$('txb-fee-box');if(!box)return;
+  if(!sh||!paid){box.style.display='none';return;}
+  var stockVal=$('tx-buy-stock').value;
+  var isUs=false,curPrice=pr;
+  if(stockVal&&stockVal!=='__new__'){
+    var it=allAccounts.find(function(a){return a.id===parseInt(stockVal);});
+    if(it&&it.sk){isUs=it.sk.isUs;curPrice=it.sk.curPrice||pr;}
+  } else {isUs=$('txb-isUs')&&$('txb-isUs').value==='1';}
+  var paidCcy=$('txb-paid-ccy').value;
+  var paidNative=paid,showCvt=false;
+  if(isUs&&paidCcy==='TWD'){paidNative=paid/st.fxRate;showCvt=true;}
+  else if(!isUs&&paidCcy==='USD'){paidNative=paid*st.fxRate;showCvt=true;}
+  var sub=sh*pr,fee=paidNative-sub;
+  var ccyL=isUs?'US$':'NT$';
+  $('txb-fee-sub').textContent=ccyL+' '+Math.round(sub).toLocaleString();
+  $('txb-fee-sub-hint').textContent=sh.toLocaleString()+' 股 × '+pr;
+  $('txb-fee-fee').textContent=ccyL+' '+Math.round(Math.abs(fee)).toLocaleString();
+  var cvtRow=$('txb-fee-cvt-row');
+  if(cvtRow){
+    if(showCvt){
+      var cvtL=isUs?('NT$ '+Math.round(paid).toLocaleString()+' ≈ US$ '+Math.round(paidNative).toLocaleString()):('US$ '+Math.round(paid).toLocaleString()+' ≈ NT$ '+Math.round(paidNative).toLocaleString());
+      $('txb-fee-cvt').textContent=cvtL;cvtRow.style.display='';
+    } else {cvtRow.style.display='none';}
+  }
+  var mktVal=sh*curPrice;
+  $('txb-fee-mkt').textContent=ccyL+' '+Math.round(mktVal).toLocaleString();
+  $('txb-fee-mkt-hint').textContent=sh.toLocaleString()+' 股 × '+curPrice;
+  box.style.display='block';
+}
 function submitStock(){
   var tk=$('s-tk').value.trim().toUpperCase();
   if(!tk){toast('請先搜尋並選擇一檔股票');return;}
@@ -2365,32 +2418,26 @@ function submitStock(){
     var sFundSrc=parseInt($('s-fund-source').value)||null;
     var updatedSk=Object.assign({},oldSk,{shares:totalShares,avgPrice:Math.round(newAvg*1000)/1000,paid:newPaid,fee:newFee,curPrice:curPrice});
     if(sFundSrc) _addFundSource(updatedSk,sFundSrc,sh,paidNative);
-    sb.from('accounts').update({balance:newMktVal,stock_data:updatedSk}).eq('id',existing.id).then(function(){
-      existing.sk=updatedSk;existing.bal=newMktVal;
-      var promises=[];
-      // transaction: stock purchase
+    var promises=[];
+    promises.push(sb.from('accounts').update({balance:newMktVal,stock_data:updatedSk}).eq('id',existing.id));
+    // transaction: stock purchase (skip balance update, already set above)
+    promises.push(api('POST','/api/transactions',{
+      date:new Date().toISOString().slice(0,10),
+      name:'買入股票',category:'買入股票',amount:-Math.round(paidTWD),
+      note:tk+' +'+sh+'股 @'+pr,icon:'📈',recurring:false,account_id:existing.id,_skipBal:true
+    }));
+    // deduct from source
+    if(skSrcId){
       promises.push(api('POST','/api/transactions',{
         date:new Date().toISOString().slice(0,10),
-        name:'買入股票',category:'買入股票',amount:newMktVal-existing.bal+Math.round(paidTWD),
-        note:tk+' +'+sh+'股 @'+pr,icon:'📈',recurring:false,account_id:existing.id
+        name:'購入股票',category:'購入股票',amount:-Math.round(paidTWD),
+        note:tk+' +'+sh+'股',icon:'📈',recurring:false,account_id:skSrcId
       }));
-      // deduct from source
-      if(skSrcId){
-        var srcAcct=allAccounts.find(function(a){return a.id===skSrcId;});
-        if(srcAcct){
-          var newSrcBal=srcAcct.bal-Math.round(paidTWD);
-          promises.push(sb.from('accounts').update({balance:newSrcBal}).eq('id',skSrcId));
-          promises.push(api('POST','/api/transactions',{
-            date:new Date().toISOString().slice(0,10),
-            name:'購入股票',category:'購入股票',amount:-Math.round(paidTWD),
-            note:tk+' +'+sh+'股',icon:'📈',recurring:false,account_id:skSrcId
-          }));
-        }
-      }
-      return Promise.all(promises).then(function(){
-        $('m-stock').classList.remove('on');clearStockSelection('s');
-        return Promise.all([loadAccounts(),loadTx()]);
-      });
+    }
+    Promise.all(promises).then(function(){
+      existing.sk=updatedSk;existing.bal=newMktVal;
+      $('m-stock').classList.remove('on');clearStockSelection('s');
+      return Promise.all([loadAccounts(),loadTx()]);
     }).then(function(){
       renderOverview();renderStocks();renderTx();toast('✓ '+tk+' 已加碼');
     });
@@ -2407,20 +2454,15 @@ function submitStock(){
       promises.push(api('POST','/api/transactions',{
         date:new Date().toISOString().slice(0,10),
         name:'初始餘額',category:'初始餘額',amount:mktVal,
-        note:tk+' +'+sh+'股 @'+pr,icon:'📥',recurring:false,account_id:newId
+        note:tk+' +'+sh+'股 @'+pr,icon:'📥',recurring:false,account_id:newId,_skipBal:true
       }));
     }
     if(skSrcId&&newId&&paidTWD){
-      var srcAcct=allAccounts.find(function(a){return a.id===skSrcId;});
-      if(srcAcct){
-        var newSrcBal=srcAcct.bal-Math.round(paidTWD);
-        promises.push(sb.from('accounts').update({balance:newSrcBal}).eq('id',skSrcId));
-        promises.push(api('POST','/api/transactions',{
-          date:new Date().toISOString().slice(0,10),
-          name:'購入股票',category:'購入股票',amount:-Math.round(paidTWD),
-          note:tk,icon:'📈',recurring:false,account_id:skSrcId
-        }));
-      }
+      promises.push(api('POST','/api/transactions',{
+        date:new Date().toISOString().slice(0,10),
+        name:'購入股票',category:'購入股票',amount:-Math.round(paidTWD),
+        note:tk,icon:'📈',recurring:false,account_id:skSrcId
+      }));
     }
     return Promise.all(promises).then(function(){
       $('m-stock').classList.remove('on');clearStockSelection('s');
@@ -2747,7 +2789,7 @@ function openModal(type){
   if(type==='stock'){clearStockSelection('s');$('s-search').value='';$('s-paid-ccy').value='TWD';setPaidCcy('s','TWD');$('s-sk-src-id').value='';$('s-sk-src-btn').textContent='選擇扣款帳戶';$('s-sk-src-btn').classList.remove('selected');populateFundSourceSelect('s-fund-source');$('m-stock').classList.add('on');}
   if(type==='cat'){renderCatManager();buildGrpSelect();$('m-cat').classList.add('on');}
 }
-['m-addacct','m-edit','m-grp','m-tx','m-stock','m-cat','m-transfer','m-acct-picker','m-cat-picker','m-user-edit'].forEach(function(id){
+['m-addacct','m-edit','m-grp','m-tx','m-stock','m-cat','m-transfer','m-acct-picker','m-cat-picker','m-user-edit','m-sk-inventory'].forEach(function(id){
   var el=$(id);
   if(el)el.addEventListener('click',function(e){if(e.target===el)el.classList.remove('on');});
 });
@@ -2840,6 +2882,7 @@ function populateTxBuyStock(){
   $('tx-buy-src-id').value='';$('tx-buy-src-btn').textContent='選擇扣款帳戶';$('tx-buy-src-btn').classList.remove('selected');
   $('txb-paid-ccy').value='TWD';setPaidCcy('txb','TWD');
   populateFundSourceSelect('txb-fund-source');
+  var tbfBox=$('txb-fee-box');if(tbfBox)tbfBox.style.display='none';
 }
 function onTxBuyStockChange(){
   var v=$('tx-buy-stock').value;
@@ -2956,6 +2999,7 @@ function populateTxSellStock(){
   $('txs-paid-ccy').value='TWD';setPaidCcy('txs','TWD');
   $('tx-sell-pnl').style.display='none';
   populateFundSourceSelect('txs-fund-source');
+  var tsfBox=$('txs-fee-box');if(tsfBox)tsfBox.style.display='none';
 }
 function onTxSellStockChange(){
   var v=$('tx-sell-stock').value;
@@ -2975,12 +3019,26 @@ function calcTxSell(){
   var sh=parseFloat($('tx-sell-sh').value)||0;
   var pr=parseFloat($('tx-sell-pr').value)||0;
   var recv=parseFloat($('tx-sell-recv').value)||0;
-  if(!sh||!pr){$('tx-sell-pnl').style.display='none';return;}
+  var feeBox=$('txs-fee-box');
+  if(!sh||!pr){$('tx-sell-pnl').style.display='none';if(feeBox)feeBox.style.display='none';return;}
   var isUs=it.sk.isUs;
   var revenue=sh*pr;// in stock currency
   var cost=sh*it.sk.avgPrice;
   var gain=revenue-cost;
   var ccyL=isUs?'US$':'NT$';
+  // fee breakdown
+  if(feeBox&&recv){
+    var paidCcy=$('txs-paid-ccy').value;
+    var recvNative=recv;
+    if(isUs&&paidCcy==='TWD') recvNative=recv/st.fxRate;
+    else if(!isUs&&paidCcy==='USD') recvNative=recv*st.fxRate;
+    var sellFee=recvNative-revenue;
+    $('txs-fee-sub').textContent=ccyL+' '+Math.round(revenue).toLocaleString();
+    $('txs-fee-sub-hint').textContent=sh.toLocaleString()+' 股 × '+pr;
+    $('txs-fee-fee').textContent=ccyL+' '+(sellFee>=0?'+':'')+Math.round(sellFee).toLocaleString();
+    $('txs-fee-fee').style.color=sellFee>=0?'var(--green)':'var(--red)';
+    feeBox.style.display='block';
+  } else if(feeBox){feeBox.style.display='none';}
   $('tx-sell-revenue').textContent=ccyL+' '+Math.round(revenue).toLocaleString();
   $('tx-sell-cost').textContent=ccyL+' '+Math.round(cost).toLocaleString();
   $('tx-sell-gain').textContent=ccyL+' '+(gain>=0?'+':'')+Math.round(gain).toLocaleString();
@@ -3042,6 +3100,320 @@ function submitTxSell(){
   }).then(function(){
     renderOverview();renderStocks();renderTx();
     toast('✓ '+tk+(remainShares>0?' 已賣出 '+sh+'股':' 已全部賣出'));
+  });
+}
+
+// ── Stock card actions ──
+function goTxBuyStock(acctId){
+  openModal('tx');
+  // switch to buy tab
+  var btns=document.querySelectorAll('.tbtn');
+  btns.forEach(function(b){b.classList.remove('e','i','buy','sell','tf');});
+  var buyBtn=btns[2];if(buyBtn)buyBtn.classList.add('buy');
+  setTxType('buy',buyBtn);
+  // pre-select the stock
+  setTimeout(function(){
+    var sel=$('tx-buy-stock');if(!sel)return;
+    sel.value=String(acctId);onTxBuyStockChange();
+  },50);
+}
+// ── Stock Inventory Detail ──
+var _skiExpanded={};
+function openSkInventory(acctId){
+  var acct=allAccounts.find(function(a){return a.id===acctId;});
+  if(!acct||!acct.sk){toast('找不到該持股');return;}
+  var sk=acct.sk,tk=sk.ticker;
+  _skiExpanded={};
+  $('ski-title').textContent=tk+' 庫存明細';
+  var nSym=sk.isUs?'US$':'NT$';
+  var fxM=sk.isUs?st.fxRate:1;
+  var curVal=Math.round(sk.shares*sk.curPrice*fxM);
+  var paidTWD=Math.round((sk.paid||0)*fxM);
+  var gain=curVal-paidTWD;
+  var pct=paidTWD>0?(gain/paidTWD*100).toFixed(2):'0.00';
+  $('ski-summary').innerHTML='<div class="info-row"><span class="info-lbl">持有股數</span><span class="info-val">'+sk.shares+'</span></div>'
+    +'<div class="info-row"><span class="info-lbl">買入均價</span><span class="info-val">'+nSym+' '+sk.avgPrice+'</span></div>'
+    +'<div class="info-row"><span class="info-lbl">現價</span><span class="info-val">'+nSym+' '+sk.curPrice+'</span></div>'
+    +'<div class="info-row"><span class="info-lbl">總成本</span><span class="info-val">'+ccySym()+' '+fmtN(cvt(paidTWD))+'</span></div>'
+    +'<div class="info-row"><span class="info-lbl">現值</span><span class="info-val">'+ccySym()+' '+fmtN(cvt(curVal))+'</span></div>'
+    +'<div class="info-row"><span class="info-lbl">未實現損益</span><span class="info-val '+(gain>=0?'g':'r')+'">'+(gain>=0?'+':'')+fmtN(cvt(Math.abs(gain)))+' ('+pct+'%)</span></div>';
+  // fetch all transactions for this account
+  $('ski-list').innerHTML='<div style="text-align:center;padding:20px;color:var(--fg3);font-size:12px">載入中…</div>';
+  $('m-sk-inventory').classList.add('on');
+  sb.from('transactions').select('*').eq('account_id',acctId).order('date',{ascending:false}).order('id',{ascending:false}).then(function(res){
+    var txArr=res.data||[];
+    if(!txArr.length){$('ski-list').innerHTML='<div style="text-align:center;padding:20px;color:var(--fg3);font-size:12px">尚無交易紀錄</div>';return;}
+    var html='';
+    txArr.forEach(function(tx,idx){
+      var isBuy=tx.category==='買入股票'||tx.category==='購入股票'||tx.category==='初始餘額';
+      var isSell=tx.category==='賣出股票';
+      var tagCls=isSell?'sell':'buy';
+      var tagText=isSell?'賣出':(tx.category==='初始餘額'?'初始':'買入');
+      var note=tx.note||'';
+      // parse shares and price from note like "AAPL +10股 @150"
+      var noteMatch=note.match(/([+-]?\d+(?:\.\d+)?)股.*?@\s*(\d+(?:\.\d+)?)/);
+      var txSh=noteMatch?parseFloat(noteMatch[1]):0;
+      var txPr=noteMatch?parseFloat(noteMatch[2]):0;
+      var amt=Math.abs(tx.amount||0);
+      var eId='ski-exp-'+tx.id;
+      html+='<div class="ski-tx-row" onclick="toggleSkiExpand(\''+eId+'\')">'
+        +'<span class="ski-tx-tag '+tagCls+'">'+tagText+'</span>'
+        +'<div class="ski-tx-info"><div class="ski-tx-date">'+tx.date+'</div>'
+        +'<div class="ski-tx-detail">'+(txSh?Math.abs(txSh)+' 股 @ '+txPr:'')+(amt?' · '+ccySym()+fmtN(cvt(amt)):'')+'</div></div>'
+        +'<svg viewBox="0 0 16 16" style="width:12px;height:12px;fill:none;stroke:var(--fg3);stroke-width:2;flex-shrink:0"><path d="M4 6l4 4 4-4"/></svg></div>';
+      // expanded detail
+      var txCurVal=txSh?Math.round(Math.abs(txSh)*sk.curPrice*(sk.isUs?st.fxRate:1)):0;
+      var txPnl=txCurVal-amt;
+      html+='<div class="ski-tx-expand" id="'+eId+'">'
+        +'<div class="sk-exp-row"><span class="sk-exp-lbl">股數</span><span class="sk-exp-val">'+(txSh?Math.abs(txSh):'—')+'</span></div>'
+        +'<div class="sk-exp-row"><span class="sk-exp-lbl">成交價</span><span class="sk-exp-val">'+nSym+' '+(txPr||'—')+'</span></div>'
+        +'<div class="sk-exp-row"><span class="sk-exp-lbl">現價</span><span class="sk-exp-val">'+nSym+' '+sk.curPrice+'</span></div>'
+        +'<div class="sk-exp-row"><span class="sk-exp-lbl">金額</span><span class="sk-exp-val">'+ccySym()+' '+fmtN(cvt(amt))+'</span></div>'
+        +(isBuy&&txSh?'<div class="sk-exp-row"><span class="sk-exp-lbl">現值</span><span class="sk-exp-val">'+ccySym()+' '+fmtN(cvt(txCurVal))+'</span></div>'
+        +'<div class="sk-exp-row"><span class="sk-exp-lbl">損益</span><span class="sk-exp-val '+(txPnl>=0?'g':'r')+'">'+(txPnl>=0?'+':'')+fmtN(cvt(Math.abs(txPnl)))+'</span></div>':'')
+        +'<div style="margin-top:8px;text-align:right"><span class="sk-act-link" onclick="event.stopPropagation();openSkInventoryEdit('+tx.id+','+acctId+')">編輯</span></div>'
+        +'</div>';
+    });
+    $('ski-list').innerHTML=html;
+  });
+}
+function toggleSkiExpand(eId){
+  _skiExpanded[eId]=!_skiExpanded[eId];
+  var el=$(eId);if(el)el.classList.toggle('open',!!_skiExpanded[eId]);
+}
+function openSkInventoryEdit(txId,acctId){
+  var el=$('ski-exp-'+txId);if(!el)return;
+  var acct=allAccounts.find(function(a){return a.id===acctId;});
+  if(!acct)return;
+  if(el.querySelector('.ski-edit-form'))return;
+  var sk=acct.sk||{},isUs=sk.isUs,tk=sk.ticker||'';
+  // fetch original tx + find paired 購入股票 tx (same date, same ticker in note)
+  sb.from('transactions').select('*').eq('id',txId).single().then(function(r){
+    if(!r.data)return;
+    var tx=r.data;
+    var note=tx.note||'';
+    var m=note.match(/([+-]?\d+(?:\.\d+)?)股.*?@\s*(\d+(?:\.\d+)?)/);
+    var curSh=m?Math.abs(parseFloat(m[1])):'';
+    var curPr=m?parseFloat(m[2]):'';
+    var curAmt=Math.abs(tx.amount||0);
+    var curDate=tx.date||'';
+    var isSell=tx.category==='賣出股票';
+    // find paired transaction (購入股票 or 賣出入帳 on another account, same date+ticker)
+    var pairedCat=isSell?'賣出入帳':'購入股票';
+    return sb.from('transactions').select('*').eq('user_id',st.userId).eq('date',curDate).eq('category',pairedCat).like('note','%'+tk+'%').then(function(pr){
+      var paired=(pr.data||[]).find(function(p){return p.account_id!==acctId&&Math.abs(p.amount)===Math.abs(tx.amount);});
+      var pairedId=paired?paired.id:null;
+      var pairedAcctId=paired?paired.account_id:null;
+      _buildSkiEditForm(el,tx,txId,acctId,isSell,isUs,curSh,curPr,curAmt,curDate,pairedId,pairedAcctId);
+    });
+  });
+}
+function _buildSkiEditForm(el,tx,txId,acctId,isSell,isUs,curSh,curPr,curAmt,curDate,pairedId,pairedAcctId){
+  var acct=allAccounts.find(function(a){return a.id===acctId;});
+  var sk=acct?acct.sk:{};
+  var h='<div class="ski-edit-form" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--bg4)">';
+  h+='<div class="ski-edit-row" style="flex-wrap:wrap">';
+  h+='<div style="flex:1;min-width:100px"><label>日期</label><input type="date" id="ski-ed-date-'+txId+'" value="'+curDate+'"></div>';
+  h+='</div>';
+  h+='<div class="ski-edit-row" style="flex-wrap:wrap">';
+  h+='<div style="flex:1;min-width:60px"><label>'+(isSell?'賣出股數':'買入股數')+'</label><input type="number" id="ski-ed-sh-'+txId+'" value="'+curSh+'" oninput="calcSkiEditFee('+txId+','+acctId+')"></div>';
+  h+='<div style="flex:1;min-width:60px"><label>'+(isSell?'賣出價格':'買入價格')+'</label><input type="number" id="ski-ed-pr-'+txId+'" value="'+curPr+'" step="0.01" oninput="calcSkiEditFee('+txId+','+acctId+')"></div>';
+  h+='</div>';
+  h+='<div class="ski-edit-row">';
+  h+='<div style="flex:1"><label>'+(isSell?'實際收到':'實際付出')+'</label>';
+  h+='<div style="display:flex;gap:6px;align-items:center">';
+  h+='<input type="number" id="ski-ed-amt-'+txId+'" value="'+curAmt+'" style="flex:1" oninput="calcSkiEditFee('+txId+','+acctId+')">';
+  h+='<div class="paid-ccy-tog" id="ski-ccy-tog-'+txId+'" style="flex-shrink:0">';
+  h+='<button class="paid-ccy-btn on" onclick="setSkiEditCcy('+txId+',\'TWD\')">NT$</button>';
+  h+='<button class="paid-ccy-btn" onclick="setSkiEditCcy('+txId+',\'USD\')">US$</button>';
+  h+='</div></div>';
+  h+='<input type="hidden" id="ski-ed-ccy-'+txId+'" value="TWD">';
+  h+='</div></div>';
+  // fee breakdown
+  h+='<div class="info-box" id="ski-ed-feebox-'+txId+'" style="display:none;margin-top:8px">';
+  h+='<div class="info-row"><span class="info-lbl">小計</span><span class="info-val" id="ski-ed-sub-'+txId+'">—</span></div>';
+  h+='<div class="info-row"><span class="info-lbl">手續費</span><span class="info-val" id="ski-ed-fee-'+txId+'">—</span></div>';
+  h+='<div class="info-row" id="ski-ed-cvt-row-'+txId+'" style="display:none"><span class="info-lbl">換算</span><span class="info-val" id="ski-ed-cvt-'+txId+'">—</span></div>';
+  h+='</div>';
+  // source account (扣款/入帳帳戶)
+  h+='<div class="ski-edit-row" style="margin-top:6px"><div style="flex:1">';
+  h+='<label>'+(isSell?'入帳帳戶':'扣款帳戶')+'</label>';
+  h+='<select id="ski-ed-src-'+txId+'" style="width:100%;background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--rs);padding:8px 10px;font-size:13px;color:var(--fg0);-webkit-appearance:none">';
+  h+='<option value="">無</option>';
+  var srcCats=isSell?['liquid','invest','fixed','recv']:['liquid','invest','fixed','recv','debt'];
+  srcCats.forEach(function(cat){
+    data[cat].items.forEach(function(it){
+      if(it.id===acctId)return;
+      var sel=it.id===pairedAcctId?' selected':'';
+      h+='<option value="'+it.id+'"'+sel+'>'+it.name+'</option>';
+    });
+  });
+  h+='</select>';
+  h+='<input type="hidden" id="ski-ed-paired-'+txId+'" value="'+(pairedId||'')+'">';
+  h+='</div></div>';
+  // fund source (關聯信貸) - only for buy transactions
+  if(!isSell){
+    h+='<div class="ski-edit-row" style="margin-top:6px"><div style="flex:1">';
+    h+='<label>關聯信貸（選填）</label>';
+    h+='<select id="ski-ed-fund-'+txId+'" style="width:100%;background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--rs);padding:8px 10px;font-size:13px;color:var(--fg0);-webkit-appearance:none">';
+    h+='<option value="">無</option>';
+    // find current fund source for this tx's shares
+    var curFundSrc='';
+    var fs=sk.fundSources||{};
+    Object.keys(fs).forEach(function(fid){
+      // can't perfectly map per-tx, show current overall fund sources
+    });
+    data.debt.items.forEach(function(it){
+      if(LOAN_TYPES.indexOf(it.type)<0)return;
+      var sel='';
+      h+='<option value="'+it.id+'"'+sel+'>'+it.name+(it.loan?' ('+it.type+')':'')+'</option>';
+    });
+    h+='</select>';
+    h+='</div></div>';
+  }
+  h+='<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">';
+  h+='<button class="subbtn" style="padding:8px 16px;font-size:12px;background:var(--bg3);color:var(--fg1)" onclick="cancelSkiEdit('+txId+')">取消</button>';
+  h+='<button class="subbtn" style="padding:8px 20px;font-size:12px" onclick="saveSkInventoryEdit('+txId+','+acctId+')">儲存</button>';
+  h+='</div></div>';
+  el.innerHTML+=h;
+  calcSkiEditFee(txId,acctId);
+}
+function cancelSkiEdit(txId){
+  var form=document.querySelector('#ski-exp-'+txId+' .ski-edit-form');
+  if(!form){return;}
+  form.classList.add('closing');
+  form.addEventListener('animationend',function(){form.remove();},{once:true});
+}
+function setSkiEditCcy(txId,ccy){
+  $('ski-ed-ccy-'+txId).value=ccy;
+  var tog=$('ski-ccy-tog-'+txId);if(!tog)return;
+  var btns=tog.querySelectorAll('.paid-ccy-btn');
+  btns.forEach(function(b){b.classList.toggle('on',b.textContent.indexOf(ccy==='TWD'?'NT':'US')>=0);});
+  calcSkiEditFee(txId);
+}
+function calcSkiEditFee(txId,acctId){
+  var sh=parseFloat($('ski-ed-sh-'+txId).value)||0;
+  var pr=parseFloat($('ski-ed-pr-'+txId).value)||0;
+  var amt=parseFloat($('ski-ed-amt-'+txId).value)||0;
+  var box=$('ski-ed-feebox-'+txId);if(!box)return;
+  if(!sh||!amt){box.style.display='none';return;}
+  var acct=acctId?allAccounts.find(function(a){return a.id===acctId;}):null;
+  var isUs=acct&&acct.sk?acct.sk.isUs:false;
+  var ccy=$('ski-ed-ccy-'+txId)?$('ski-ed-ccy-'+txId).value:'TWD';
+  var amtNative=amt,showCvt=false;
+  if(isUs&&ccy==='TWD'){amtNative=amt/st.fxRate;showCvt=true;}
+  else if(!isUs&&ccy==='USD'){amtNative=amt*st.fxRate;showCvt=true;}
+  var sub=sh*pr,fee=amtNative-sub;
+  var nSym=isUs?'US$':'NT$';
+  $('ski-ed-sub-'+txId).textContent=nSym+' '+Math.round(sub).toLocaleString();
+  $('ski-ed-fee-'+txId).textContent=nSym+' '+Math.round(Math.abs(fee)).toLocaleString();
+  var cvtRow=$('ski-ed-cvt-row-'+txId);
+  if(cvtRow){
+    if(showCvt){
+      var cvtL=isUs?('NT$ '+Math.round(amt).toLocaleString()+' ≈ US$ '+Math.round(amtNative).toLocaleString()):('US$ '+Math.round(amt).toLocaleString()+' ≈ NT$ '+Math.round(amtNative).toLocaleString());
+      $('ski-ed-cvt-'+txId).textContent=cvtL;cvtRow.style.display='';
+    } else {cvtRow.style.display='none';}
+  }
+  box.style.display='block';
+}
+function saveSkInventoryEdit(txId,acctId){
+  var sh=parseFloat($('ski-ed-sh-'+txId).value)||0;
+  var pr=parseFloat($('ski-ed-pr-'+txId).value)||0;
+  var amt=parseFloat($('ski-ed-amt-'+txId).value)||0;
+  var ccy=$('ski-ed-ccy-'+txId)?$('ski-ed-ccy-'+txId).value:'TWD';
+  var newDate=$('ski-ed-date-'+txId)?$('ski-ed-date-'+txId).value:'';
+  var newSrcId=$('ski-ed-src-'+txId)?parseInt($('ski-ed-src-'+txId).value)||0:0;
+  var oldPairedId=$('ski-ed-paired-'+txId)?parseInt($('ski-ed-paired-'+txId).value)||0:0;
+  var newFundId=$('ski-ed-fund-'+txId)?parseInt($('ski-ed-fund-'+txId).value)||0:0;
+  if(!sh&&!amt){toast('請填入有效數值');return;}
+  var acct=allAccounts.find(function(a){return a.id===acctId;});
+  if(!acct||!acct.sk){toast('找不到持股帳戶');return;}
+  var sk=acct.sk,isUs=sk.isUs,tk=sk.ticker;
+  var amtTWD=amt;
+  if(ccy==='USD') amtTWD=Math.round(amt*st.fxRate);
+  else amtTWD=Math.round(amt);
+  var noteStr=tk+' '+(sh>0?'+':'')+sh+'股 @'+pr;
+  var amtSigned=amtTWD;
+  var isSellTx=false;
+  sb.from('transactions').select('category,amount').eq('id',txId).single().then(function(r){
+    if(!r.data)return;
+    isSellTx=r.data.category==='賣出股票';
+    amtSigned=isSellTx?Math.abs(amtTWD):-Math.abs(amtTWD);
+    var upd={amount:amtSigned,note:noteStr};
+    if(newDate) upd.date=newDate;
+    return sb.from('transactions').update(upd).eq('id',txId);
+  }).then(function(){
+    // handle paired source account transaction
+    var promises=[];
+    var pairedAmt=isSellTx?Math.abs(amtTWD):-Math.abs(amtTWD);
+    var pairedCat=isSellTx?'賣出入帳':'購入股票';
+    var pairedNote=tk;
+    if(oldPairedId&&newSrcId){
+      // update existing paired tx: move to new account, update amount/date
+      var pUpd={amount:pairedAmt,account_id:newSrcId,note:pairedNote};
+      if(newDate) pUpd.date=newDate;
+      promises.push(sb.from('transactions').update(pUpd).eq('id',oldPairedId));
+    } else if(oldPairedId&&!newSrcId){
+      // remove paired tx (user cleared source account)
+      promises.push(sb.from('transactions').delete().eq('id',oldPairedId));
+    } else if(!oldPairedId&&newSrcId){
+      // create new paired tx
+      promises.push(sb.from('transactions').insert({
+        user_id:st.userId,date:newDate||new Date().toISOString().slice(0,10),
+        name:pairedCat,category:pairedCat,amount:pairedAmt,
+        note:pairedNote,icon:isSellTx?'📉':'📈',recurring:false,account_id:newSrcId
+      }));
+    }
+    return Promise.all(promises);
+  }).then(function(){
+    // recalculate stock_data from ALL transactions
+    return sb.from('transactions').select('*').eq('account_id',acctId).order('date').order('id');
+  }).then(function(res){
+    var txArr=res.data||[];
+    var totalShares=0,totalPaid=0,totalFee=0,weightedCost=0;
+    txArr.forEach(function(tx){
+      var note=tx.note||'';
+      var m=note.match(/([+-]?\d+(?:\.\d+)?)股.*?@\s*(\d+(?:\.\d+)?)/);
+      var txSh=m?parseFloat(m[1]):0;
+      var txPr=m?parseFloat(m[2]):0;
+      var isSell=tx.category==='賣出股票';
+      if(isSell){
+        totalShares-=Math.abs(txSh);
+        var soldCost=Math.abs(txSh)*((totalShares+Math.abs(txSh))>0?weightedCost/(totalShares+Math.abs(txSh)):0);
+        weightedCost-=soldCost;
+        totalPaid-=soldCost;
+      } else {
+        totalShares+=Math.abs(txSh);
+        var paidAmt=Math.abs(tx.amount);
+        var paidNative=isUs?paidAmt/st.fxRate:paidAmt;
+        var sub=Math.abs(txSh)*txPr;
+        totalPaid+=paidNative;
+        totalFee+=paidNative-sub;
+        weightedCost+=paidNative;
+      }
+    });
+    if(totalShares<0)totalShares=0;
+    var avgPrice=totalShares>0?weightedCost/totalShares:0;
+    avgPrice=Math.round(avgPrice*1000)/1000;
+    var curPrice=sk.curPrice;
+    var newMkt=isUs?Math.round(totalShares*curPrice*st.fxRate):Math.round(totalShares*curPrice);
+    var updSk=Object.assign({},sk,{shares:totalShares,avgPrice:avgPrice,paid:totalPaid,fee:totalFee});
+    // update fund source if changed
+    if(newFundId&&sh>0){
+      var paidNative=isUs?amtTWD/st.fxRate:amtTWD;
+      if(!updSk.fundSources) updSk.fundSources={};
+      // simplified: set this fund source (full rebuild would need per-tx tracking)
+      _addFundSource(updSk,newFundId,sh,Math.abs(paidNative));
+    }
+    return sb.from('accounts').update({balance:newMkt,stock_data:updSk}).eq('id',acctId).then(function(){
+      acct.sk=updSk;acct.bal=newMkt;
+    });
+  }).then(function(){
+    toast('✓ 已更新');
+    return Promise.all([loadAccounts(),loadTx()]);
+  }).then(function(){
+    renderStocks();renderOverview();updateHero();renderTx();
+    openSkInventory(acctId);
   });
 }
 
@@ -4192,13 +4564,14 @@ function renderCreditAnalysis(){
     var icr=cumInterest>0?((stockMktVal-stockCost)/cumInterest):0;
 
     html+='<div class="lev-card">';
-    // card title + badges
-    html+='<div class="lev-card-title"><span class="dot" style="background:'+loan.dot+'"></span>'+loan.name;
+    // card title + badges + detail link
+    html+='<div class="lev-card-title" style="position:relative"><span class="dot" style="background:'+loan.dot+'"></span>'+loan.name;
     if(ld.repay_type) html+='<span class="lev-badge">'+ld.repay_type+'</span>';
     if(ld.refinanced_from){
       var oldA=allAccounts.find(function(a){return a.id===ld.refinanced_from;});
       if(oldA) html+='<span class="lev-badge lev-badge-refi">代償自 '+oldA.name+'</span>';
     }
+    html+='<span class="sk-act-link" style="margin-left:auto;font-size:11px" onclick="openLoanDetail('+loan.id+')">查看詳情</span>';
     html+='</div>';
 
     // progress bar (only for amortizing loans)
@@ -4326,6 +4699,52 @@ function renderCreditAnalysis(){
   }
 
   $('lev-credit').innerHTML=html;
+}
+
+function openLoanDetail(acctId){
+  var acct=allAccounts.find(function(a){return a.id===acctId;});
+  if(!acct||!acct.loan){toast('找不到貸款資料');return;}
+  var ld=acct.loan;
+  var isIntOnly=(ld.repay_type||'').indexOf('只繳利息')>=0;
+  var principal=ld.principal||0;
+  var rate=ld.annual_rate||0;
+  var months=ld.total_months||0;
+  var pmt=0,totalPay=0,totalInt=0;
+  if(isIntOnly){
+    pmt=Math.round(principal*rate/100/12);
+    totalInt=pmt*months;
+    totalPay=principal+totalInt;
+  } else if(months>0){
+    pmt=ld.pmt_override||calcPMT(principal,rate,months);
+    totalPay=Math.round(pmt*months);
+    totalInt=totalPay-principal;
+  }
+  var apr=calcLoanAPR(principal,pmt,months,loanFee);
+  var startStr=ld.start_date||'—';
+  var payDay=ld.pay_day||'—';
+  var loanFee=ld._fee||0;
+
+  var h='<div class="mttl">'+acct.name+' 貸款詳情</div>';
+  h+='<div class="info-box">';
+  h+='<div class="info-row"><span class="info-lbl">還款方式</span><span class="info-val">'+(ld.repay_type||'—')+'</span></div>';
+  h+='<div class="info-row"><span class="info-lbl">貸款本金</span><span class="info-val">'+ccySym()+' '+fmtN(cvt(principal))+'</span></div>';
+  h+='<div class="info-row"><span class="info-lbl">年利率</span><span class="info-val">'+rate+'%</span></div>';
+  h+='<div class="info-row"><span class="info-lbl">總期數</span><span class="info-val">'+(months||'無到期')+'</span></div>';
+  h+='<div class="info-row"><span class="info-lbl">每月還款</span><span class="info-val">'+ccySym()+' '+fmtN(cvt(pmt))+'</span></div>';
+  h+='<div class="info-row"><span class="info-lbl">起始日</span><span class="info-val">'+startStr+'</span></div>';
+  h+='<div class="info-row"><span class="info-lbl">繳款日</span><span class="info-val">每月 '+payDay+' 日</span></div>';
+  h+='</div>';
+  h+='<div class="info-box" style="margin-top:10px">';
+  h+='<div class="info-row"><span class="info-lbl">總繳金額</span><span class="info-val">'+ccySym()+' '+fmtN(cvt(totalPay))+'</span></div>';
+  h+='<div class="info-row"><span class="info-lbl">總利息</span><span class="info-val r">'+ccySym()+' '+fmtN(cvt(totalInt))+'</span></div>';
+  if(loanFee>0) h+='<div class="info-row"><span class="info-lbl">開辦費</span><span class="info-val">'+ccySym()+' '+fmtN(cvt(loanFee))+'</span></div>';
+  h+='<div class="info-row" style="border-top:1px solid var(--bg4);padding-top:8px;margin-top:4px"><span class="info-lbl" style="font-weight:600">總費用率 APR</span><span class="info-val" style="font-weight:600">'+apr.toFixed(2)+'%</span></div>';
+  h+='</div>';
+  h+='<div style="text-align:center;padding:16px 0 4px">';
+  h+='<button class="subbtn" style="background:var(--bg3);color:var(--fg1)" onclick="$(\'m-loan-detail\').classList.remove(\'on\')">關閉</button>';
+  h+='</div>';
+  $('loan-detail-body').innerHTML=h;
+  $('m-loan-detail').classList.add('on');
 }
 
 function renderPledgeAnalysis(){

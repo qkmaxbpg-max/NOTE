@@ -382,6 +382,26 @@ body.light .acct-add-btn:hover{background:rgba(0,0,0,.03)}
 .sk-exp-row:last-child{border-bottom:none}
 .sk-exp-lbl{font-size:11px;color:var(--fg2)}.sk-exp-val{font-family:var(--mono);font-size:12px;font-weight:500;color:var(--fg0)}
 .sk-exp-val.g{color:var(--green)}.sk-exp-val.r{color:var(--red)}
+.sk-exp-act{display:flex;gap:16px;padding:10px 18px;border-top:1px solid var(--bg4);justify-content:flex-end}
+.sk-act-link{font-size:12px;font-weight:500;color:var(--green);cursor:pointer;letter-spacing:.02em}
+.sk-act-link:active{opacity:.6}
+.ski-tx-row{padding:10px 14px;border-bottom:1px solid var(--bg3);cursor:pointer;display:flex;align-items:center;gap:10px}
+.ski-tx-row:last-child{border-bottom:none}
+.ski-tx-tag{font-size:10px;font-weight:600;padding:2px 8px;border-radius:6px;flex-shrink:0}
+.ski-tx-tag.buy{background:rgba(29,185,84,.15);color:var(--green)}
+.ski-tx-tag.sell{background:rgba(242,92,92,.15);color:var(--red)}
+.ski-tx-info{flex:1;min-width:0}
+.ski-tx-date{font-size:11px;color:var(--fg3)}
+.ski-tx-detail{font-size:12px;color:var(--fg1);font-family:var(--mono)}
+.ski-tx-expand{display:none;padding:8px 14px 12px;background:var(--bg2);border-bottom:1px solid var(--bg3)}
+.ski-tx-expand.open{display:block}
+.ski-edit-form{animation:skiEdIn .22s ease}
+.ski-edit-form.closing{animation:skiEdOut .18s ease forwards;pointer-events:none}
+@keyframes skiEdIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes skiEdOut{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(8px)}}
+.ski-edit-row{display:flex;gap:8px;margin-top:8px;align-items:center}
+.ski-edit-row input{flex:1;background:var(--bg3);border:1px solid var(--bg4);border-radius:var(--rs);padding:8px 10px;font-family:var(--mono);font-size:13px;color:var(--fg0)}
+.ski-edit-row label{font-size:11px;color:var(--fg2);display:block;margin-bottom:2px}
 .delay-note{text-align:center;font-size:11px;color:var(--fg3);padding:8px}
 .add-row{display:flex;align-items:center;justify-content:center;gap:7px;padding:14px;color:var(--blue);font-size:13px;font-weight:500;cursor:pointer;background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--r)}
 .add-row:hover{background:var(--bbg);border-color:var(--bbord)}

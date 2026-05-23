@@ -15,7 +15,7 @@
 <!-- PWA: common -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=21">
+<link rel="stylesheet" href="style.css?v=26">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -633,19 +633,25 @@
         </div>
       </div>
       <div class="f2">
-        <div class="field"><label>買入股數</label><input type="number" id="tx-buy-sh" placeholder="0"></div>
-        <div class="field"><label>買入價格</label><input type="number" id="tx-buy-pr" placeholder="0.00" step="0.01"></div>
+        <div class="field"><label>買入股數</label><input type="number" id="tx-buy-sh" placeholder="0" oninput="calcTxBuyFee()"></div>
+        <div class="field"><label>買入價格</label><input type="number" id="tx-buy-pr" placeholder="0.00" step="0.01" oninput="calcTxBuyFee()"></div>
       </div>
       <div class="field">
         <label>實際付出</label>
         <div class="paid-input-row">
-          <input type="number" id="tx-buy-paid" placeholder="0" style="flex:1">
+          <input type="number" id="tx-buy-paid" placeholder="0" oninput="calcTxBuyFee()" style="flex:1">
           <div class="paid-ccy-tog" id="txb-paid-ccy-tog">
             <button class="paid-ccy-btn on" onclick="setPaidCcy('txb','TWD')">NT$</button>
             <button class="paid-ccy-btn" onclick="setPaidCcy('txb','USD')">US$</button>
           </div>
         </div>
         <input type="hidden" id="txb-paid-ccy" value="TWD">
+      </div>
+      <div class="info-box" id="txb-fee-box" style="display:none">
+        <div class="info-row"><span class="info-lbl">小計</span><span class="info-val" id="txb-fee-sub">—</span><span class="info-hint" id="txb-fee-sub-hint"></span></div>
+        <div class="info-row"><span class="info-lbl">手續費</span><span class="info-val" id="txb-fee-fee">—</span></div>
+        <div class="info-row" id="txb-fee-cvt-row" style="display:none"><span class="info-lbl">付出換算</span><span class="info-val" id="txb-fee-cvt">—</span></div>
+        <div class="info-row" style="border-top:1px solid var(--bg4);padding-top:8px;margin-top:4px"><span class="info-lbl" style="font-weight:600">市值</span><span class="info-val" id="txb-fee-mkt">—</span><span class="info-hint" id="txb-fee-mkt-hint"></span></div>
       </div>
       <div class="field">
         <label>扣款帳戶</label>
@@ -686,6 +692,10 @@
         <label>入帳帳戶</label>
         <div class="acct-pick-btn" id="tx-sell-dest-btn" onclick="openAcctPicker('tx-sell-dest')">選擇入帳帳戶</div>
         <input type="hidden" id="tx-sell-dest-id">
+      </div>
+      <div class="info-box" id="txs-fee-box" style="display:none">
+        <div class="info-row"><span class="info-lbl">賣出小計</span><span class="info-val" id="txs-fee-sub">—</span><span class="info-hint" id="txs-fee-sub-hint"></span></div>
+        <div class="info-row"><span class="info-lbl">手續費</span><span class="info-val" id="txs-fee-fee">—</span></div>
       </div>
       <div class="info-box" id="tx-sell-pnl" style="display:none">
         <div class="info-row"><span class="info-lbl">賣出收益</span><span class="info-val" id="tx-sell-revenue">—</span></div>
@@ -884,8 +894,29 @@
   </div>
 </div>
 
+<!-- modal: stock inventory detail -->
+<div class="backdrop" id="m-sk-inventory">
+  <div class="modal" style="max-width:440px">
+    <div class="mpull"></div>
+    <div class="mttl" id="ski-title">庫存明細</div>
+    <div class="info-box" id="ski-summary" style="margin-bottom:12px"></div>
+    <div id="ski-list"></div>
+    <div style="text-align:center;padding:16px 0 4px">
+      <button class="subbtn" style="background:var(--bg3);color:var(--fg1)" onclick="$('m-sk-inventory').classList.remove('on')">關閉</button>
+    </div>
+  </div>
+</div>
+
+<!-- modal: loan detail -->
+<div class="backdrop" id="m-loan-detail">
+  <div class="modal" style="max-width:400px">
+    <div class="mpull"></div>
+    <div id="loan-detail-body"></div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=21"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>
