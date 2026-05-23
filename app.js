@@ -520,6 +520,7 @@ function navTo(page){
   $('mainContent').style.display='none';
   $('leveragePage').style.display='none';
   $('devPage').style.display='none';
+  $('retirePage').style.display='none';
   if(page==='overview'){
     $('mainContent').style.display='flex';
     document.querySelectorAll('.sidenav-item')[0].classList.add('active');
@@ -527,6 +528,10 @@ function navTo(page){
     $('leveragePage').style.display='flex';
     renderLeverage();
     document.querySelectorAll('.sidenav-item')[1].classList.add('active');
+  } else if(page==='retire'){
+    $('retirePage').style.display='flex';
+    renderRetire();
+    document.querySelectorAll('.sidenav-item')[3].classList.add('active');
   } else {
     $('devPage').style.display='flex';
     $('calcHub').style.display='';
@@ -2998,6 +3003,7 @@ function populateTxSellStock(){
   $('tx-sell-dest-id').value='';$('tx-sell-dest-btn').textContent='選擇入帳帳戶';$('tx-sell-dest-btn').classList.remove('selected');
   $('txs-paid-ccy').value='TWD';setPaidCcy('txs','TWD');
   $('tx-sell-pnl').style.display='none';
+  if($('tx-sell-retire'))$('tx-sell-retire').checked=false;
   populateFundSourceSelect('txs-fund-source');
   var tsfBox=$('txs-fee-box');if(tsfBox)tsfBox.style.display='none';
 }
@@ -3046,6 +3052,7 @@ function calcTxSell(){
   $('tx-sell-pnl').style.display='block';
 }
 function submitTxSell(){
+  var retireCheck=$('tx-sell-retire')&&$('tx-sell-retire').checked;
   var stockVal=$('tx-sell-stock').value;
   if(!stockVal){toast('請選擇持股');return;}
   var it=allAccounts.find(function(a){return a.id===parseInt(stockVal);});
@@ -3085,7 +3092,7 @@ function submitTxSell(){
   // sell transaction on the stock account
   promises.push(api('POST','/api/transactions',{
     date:txDate,name:'賣出股票',category:'賣出股票',amount:Math.round(recvTWD),
-    note:tk+' -'+sh+'股 @'+pr,icon:'📉',recurring:false,account_id:it.id,_skipBal:true
+    note:tk+' -'+sh+'股 @'+pr+(retireCheck?' [動態提領]':''),icon:'📉',recurring:false,account_id:it.id,_skipBal:true
   }));
   // deposit to destination account
   if(destId){
@@ -5442,6 +5449,482 @@ function calcInflation(){
   html+=_resRow('損失比例',lossPct+'%','r');
   html+='</div>';
   document.getElementById('c-inf-result').innerHTML=html;
+}
+
+// ── Retirement Dynamic Withdrawal ──
+var retireConf=null;
+var retireYears=[];
+var _retExpanded={};
+
+function loadRetireConfig(){
+  return sb.from('retirement_config').select('*').eq('user_id',st.userId).single().then(function(res){
+    retireConf=res.data||null;
+    return retireConf;
+  });
+}
+
+function loadRetireYears(){
+  return sb.from('retirement_years').select('*').eq('user_id',st.userId).order('year',{ascending:true}).then(function(res){
+    retireYears=res.data||[];
+    return retireYears;
+  });
+}
+
+function getStockTotal(){
+  var total=0;
+  if(data.invest&&data.invest.items){
+    data.invest.items.forEach(function(it){
+      if(it.sk)total+=acctVal(it);
+    });
+  }
+  return Math.round(total);
+}
+
+function renderRetire(){
+  var el=$('retire-content');
+  if(!el)return;
+  el.innerHTML='<div style="text-align:center;padding:30px;color:var(--fg3)">載入中...</div>';
+  Promise.all([loadRetireConfig(),loadRetireYears()]).then(function(){
+    if(!retireConf){
+      renderRetireSetup(el);
+    } else {
+      renderRetireFull(el);
+    }
+  });
+}
+
+function renderRetireSetup(el){
+  var stockTotal=getStockTotal();
+  var html='<div class="ret-setup">';
+  html+='<div style="text-align:center;margin-bottom:24px">';
+  html+='<div style="font-size:36px;margin-bottom:8px">🏖️</div>';
+  html+='<div style="font-size:18px;font-weight:600;color:var(--fg0);margin-bottom:4px">退休動態提領分析</div>';
+  html+='<div style="font-size:13px;color:var(--fg2)">設定初始參數開始追蹤</div>';
+  html+='</div>';
+  html+='<div class="field"><label>初始本金 P₀ (TWD)</label><input type="number" id="ret-p0" value="'+stockTotal+'" style="font-family:var(--mono)"></div>';
+  html+='<div class="field"><label>初始提領率 R₀ (%)</label><input type="number" id="ret-r0" placeholder="4" step="0.1" value="4"></div>';
+  html+='<div class="field"><label>通膨率 i (%)</label><input type="number" id="ret-inf" placeholder="2" step="0.1" value="2"></div>';
+  html+='<div style="font-size:11px;color:var(--fg3);margin-bottom:16px">* 初始本金已自動填入目前股票總市值 '+fmtN(stockTotal)+' TWD</div>';
+  html+='<button class="ret-calc-btn" onclick="saveRetireConfig()">開始</button>';
+  html+='</div>';
+  el.innerHTML=html;
+}
+
+var _retManual=false;
+
+function renderRetireFull(el){
+  var conf=retireConf;
+  var html='';
+  // config bar
+  html+='<div class="ret-config-bar">';
+  html+='<div class="ret-config-item">P₀ <span class="ret-config-val">'+fmtN(conf.initial_principal)+'</span></div>';
+  html+='<div class="ret-config-item">R₀ <span class="ret-config-val">'+conf.withdrawal_rate+'%</span></div>';
+  html+='<div class="ret-config-item">i <span class="ret-config-val">'+conf.inflation_rate+'%</span></div>';
+  html+='<button onclick="resetRetireConfig()" style="margin-left:auto;padding:4px 10px;border-radius:var(--rs);border:1px solid var(--bg4);background:var(--bg3);color:var(--fg2);font-size:11px;cursor:pointer">重設</button>';
+  html+='</div>';
+  // calc buttons row
+  html+='<div style="display:flex;gap:8px">';
+  html+='<button class="ret-calc-btn" style="flex:1" onclick="calcRetireYear()">計算本年度 ('+new Date().getFullYear()+')</button>';
+  html+='<button class="ret-calc-btn ret-manual-btn'+ (_retManual?' active':'')+'" onclick="toggleRetManual()">手動輸入</button>';
+  html+='</div>';
+  // manual input panel
+  html+='<div id="ret-manual-panel" class="ret-manual-panel'+(_retManual?' open':'')+'">';
+  html+='<div class="ret-manual-grid">';
+  html+='<div class="field"><label>年度</label><input type="number" id="ret-m-year" value="'+new Date().getFullYear()+'" style="font-family:var(--mono)"></div>';
+  html+='<div class="field"><label>年末資產</label><input type="number" id="ret-m-assets" value="'+getStockTotal()+'" style="font-family:var(--mono)"></div>';
+  html+='<div class="field"><label>實際提領金額</label><input type="number" id="ret-m-withdraw" value="0" style="font-family:var(--mono)"></div>';
+  html+='</div>';
+  html+='<button class="ret-calc-btn" onclick="calcRetireYearManual()" style="margin-top:8px">計算並儲存</button>';
+  html+='</div>';
+  // chart
+  if(retireYears.length>0){
+    html+='<div class="ret-chart-wrap"><canvas id="ret-chart" width="380" height="180" style="width:100%;height:180px"></canvas></div>';
+  }
+  // history
+  html+='<div style="font-size:11px;color:var(--fg2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">歷年紀錄</div>';
+  if(retireYears.length===0){
+    html+='<div style="text-align:center;padding:30px;color:var(--fg3);font-size:13px">尚無紀錄，請按上方按鈕計算本年度</div>';
+  } else {
+    html+=renderRetireHistory();
+  }
+  el.innerHTML=html;
+  if(retireYears.length>0)renderRetireChart();
+}
+
+function toggleRetManual(){
+  _retManual=!_retManual;
+  var panel=$('ret-manual-panel');
+  if(panel)panel.classList.toggle('open');
+  var btn=document.querySelector('.ret-manual-btn');
+  if(btn)btn.classList.toggle('active');
+}
+
+function saveRetireConfig(){
+  var p0=parseFloat($('ret-p0').value)||0;
+  var r0=parseFloat($('ret-r0').value)||0;
+  var inf=parseFloat($('ret-inf').value)||2;
+  if(!p0||!r0){toast('請填入本金與提領率');return;}
+  sb.from('retirement_config').upsert({
+    user_id:st.userId,
+    initial_principal:p0,
+    withdrawal_rate:r0,
+    inflation_rate:inf
+  },{onConflict:'user_id'}).then(function(res){
+    if(res.error){toast('儲存失敗: '+res.error.message);return;}
+    toast('✓ 退休設定已儲存');
+    renderRetire();
+  });
+}
+
+function resetRetireConfig(){
+  if(!confirm('確定要重設退休設定？所有歷年紀錄也會一併刪除。'))return;
+  Promise.all([
+    sb.from('retirement_config').delete().eq('user_id',st.userId),
+    sb.from('retirement_years').delete().eq('user_id',st.userId)
+  ]).then(function(){
+    retireConf=null;
+    retireYears=[];
+    toast('✓ 已重設');
+    renderRetire();
+  });
+}
+
+function calcRetireYear(){
+  if(!retireConf){toast('請先設定退休參數');return;}
+  var conf=retireConf;
+  var yr=new Date().getFullYear();
+  var existing=retireYears.find(function(r){return r.year===yr;});
+  if(existing&&!confirm(yr+' 年度已有紀錄，要覆蓋嗎？'))return;
+
+  var endAssets=getStockTotal();
+
+  // fetch transactions this year with [動態提領] tag
+  var yrStart=yr+'-01-01';
+  var yrEnd=yr+'-12-31';
+  sb.from('transactions').select('*').eq('user_id',st.userId).gte('date',yrStart).lte('date',yrEnd).like('note','%[動態提領]%').then(function(res){
+    var txArr=res.data||[];
+    var actualWithdrawal=0;
+    txArr.forEach(function(tx){actualWithdrawal+=Math.abs(tx.amount);});
+
+    var prevYear=null,prevEnd=0,prevActual=0,prevSuggested=0,prevRule='';
+    if(retireYears.length>0){
+      prevYear=retireYears[retireYears.length-1];
+      prevEnd=prevYear.end_assets;
+      prevActual=prevYear.actual_withdrawal;
+      prevSuggested=prevYear.suggested_withdrawal;
+      prevRule=prevYear.rule_triggered;
+    }
+
+    var returnRate=null;
+    var isFirst=!prevYear;
+    if(!isFirst){
+      var denom=prevEnd-prevActual;
+      returnRate=denom!==0?(endAssets-prevEnd+prevActual)/denom:0;
+    }
+
+    // Withdrawal calculation
+    var basis=isFirst?conf.initial_principal*conf.withdrawal_rate/100:prevSuggested;
+    var detail={basis:basis,isFirst:isFirst};
+
+    // Emergency reset check
+    if(!isFirst&&prevRule==='🚨緊急'&&endAssets>=conf.initial_principal*0.5){
+      basis=endAssets*conf.withdrawal_rate/100;
+      detail.emergencyReset=true;
+      detail.basisAfterReset=basis;
+    }
+
+    // Inflation adjustment
+    var inflAdj=basis;
+    if(returnRate!==null&&returnRate>0){
+      inflAdj=basis*(1+Math.min(conf.inflation_rate/100,0.06));
+      detail.inflAdj=inflAdj;
+    }
+
+    // Rule application
+    var rule='',suggested=inflAdj;
+    var r0=conf.withdrawal_rate/100;
+
+    if(endAssets<conf.initial_principal*0.5){
+      rule='🚨緊急';
+      suggested=endAssets*0.02;
+      detail.ruleNote='資產低於P₀的50%，僅提領2%';
+    } else {
+      var curRate=inflAdj/endAssets;
+      if(curRate>r0*1.2){
+        rule='🔴加強縮減';
+        var excess=(curRate-r0)/(r0*0.2);
+        var tier=Math.floor(excess);
+        var reduction=1-(tier*0.1);
+        if(reduction<0.1)reduction=0.1;
+        suggested=inflAdj*reduction;
+        if(suggested<endAssets*0.02)suggested=endAssets*0.02;
+        detail.ruleNote='提領率超過R₀的120%，縮減'+Math.round((1-reduction)*100)+'%';
+        detail.curRate=curRate;detail.tier=tier;detail.reduction=reduction;
+      } else if(curRate<r0*0.8){
+        rule='🟡繁榮';
+        suggested=inflAdj*1.1;
+        detail.ruleNote='提領率低於R₀的80%，增加10%';
+        detail.curRate=curRate;
+      } else if(returnRate!==null&&returnRate>0&&inflAdj!==basis){
+        rule='🔵通膨調整';
+        suggested=inflAdj;
+        detail.ruleNote='正報酬年度，通膨調整';
+      } else {
+        rule='⚪維持';
+        suggested=basis;
+        detail.ruleNote='維持原提領金額';
+      }
+    }
+
+    detail.rule=rule;
+    detail.suggested=Math.round(suggested);
+    detail.endAssets=endAssets;
+    detail.returnRate=returnRate;
+    detail.actualWithdrawal=actualWithdrawal;
+
+    var row={
+      user_id:st.userId,
+      year:yr,
+      end_assets:endAssets,
+      return_rate:returnRate,
+      suggested_withdrawal:Math.round(suggested),
+      actual_withdrawal:actualWithdrawal,
+      rule_triggered:rule,
+      calc_detail:detail
+    };
+
+    sb.from('retirement_years').upsert(row,{onConflict:'user_id,year'}).then(function(res2){
+      if(res2.error){toast('儲存失敗: '+res2.error.message);return;}
+      toast('✓ '+yr+' 年度已計算');
+      renderRetire();
+    });
+  });
+}
+
+function calcRetireYearManual(){
+  if(!retireConf){toast('請先設定退休參數');return;}
+  var yr=parseInt($('ret-m-year').value)||0;
+  var endAssets=parseFloat($('ret-m-assets').value)||0;
+  var actualWithdrawal=parseFloat($('ret-m-withdraw').value)||0;
+  if(!yr||yr<1900||yr>2200){toast('請輸入有效年度');return;}
+  if(!endAssets){toast('請輸入年末資產');return;}
+  var existing=retireYears.find(function(r){return r.year===yr;});
+  if(existing&&!confirm(yr+' 年度已有紀錄，要覆蓋嗎？'))return;
+
+  var conf=retireConf;
+  // find previous year record (year < yr, sorted ascending)
+  var prevYear=null;
+  var sorted=retireYears.slice().sort(function(a,b){return a.year-b.year;});
+  for(var i=0;i<sorted.length;i++){
+    if(sorted[i].year<yr)prevYear=sorted[i];
+  }
+  var prevEnd=prevYear?prevYear.end_assets:0;
+  var prevActual=prevYear?prevYear.actual_withdrawal:0;
+  var prevSuggested=prevYear?prevYear.suggested_withdrawal:0;
+  var prevRule=prevYear?prevYear.rule_triggered:'';
+  var isFirst=!prevYear;
+
+  var returnRate=null;
+  if(!isFirst){
+    var denom=prevEnd-prevActual;
+    returnRate=denom!==0?(endAssets-prevEnd+prevActual)/denom:0;
+  }
+
+  var basis=isFirst?conf.initial_principal*conf.withdrawal_rate/100:prevSuggested;
+  var detail={basis:basis,isFirst:isFirst};
+
+  if(!isFirst&&prevRule==='🚨緊急'&&endAssets>=conf.initial_principal*0.5){
+    basis=endAssets*conf.withdrawal_rate/100;
+    detail.emergencyReset=true;
+    detail.basisAfterReset=basis;
+  }
+
+  var inflAdj=basis;
+  if(returnRate!==null&&returnRate>0){
+    inflAdj=basis*(1+Math.min(conf.inflation_rate/100,0.06));
+    detail.inflAdj=inflAdj;
+  }
+
+  var rule='',suggested=inflAdj;
+  var r0=conf.withdrawal_rate/100;
+
+  if(endAssets<conf.initial_principal*0.5){
+    rule='🚨緊急';
+    suggested=endAssets*0.02;
+    detail.ruleNote='資產低於P₀的50%，僅提領2%';
+  } else {
+    var curRate=inflAdj/endAssets;
+    if(curRate>r0*1.2){
+      rule='🔴加強縮減';
+      var excess=(curRate-r0)/(r0*0.2);
+      var tier=Math.floor(excess);
+      var reduction=1-(tier*0.1);
+      if(reduction<0.1)reduction=0.1;
+      suggested=inflAdj*reduction;
+      if(suggested<endAssets*0.02)suggested=endAssets*0.02;
+      detail.ruleNote='提領率超過R₀的120%，縮減'+Math.round((1-reduction)*100)+'%';
+      detail.curRate=curRate;detail.tier=tier;detail.reduction=reduction;
+    } else if(curRate<r0*0.8){
+      rule='🟡繁榮';
+      suggested=inflAdj*1.1;
+      detail.ruleNote='提領率低於R₀的80%，增加10%';
+      detail.curRate=curRate;
+    } else if(returnRate!==null&&returnRate>0&&inflAdj!==basis){
+      rule='🔵通膨調整';
+      suggested=inflAdj;
+      detail.ruleNote='正報酬年度，通膨調整';
+    } else {
+      rule='⚪維持';
+      suggested=basis;
+      detail.ruleNote='維持原提領金額';
+    }
+  }
+
+  detail.rule=rule;
+  detail.suggested=Math.round(suggested);
+  detail.endAssets=endAssets;
+  detail.returnRate=returnRate;
+  detail.actualWithdrawal=actualWithdrawal;
+  detail.manual=true;
+
+  var row={
+    user_id:st.userId,
+    year:yr,
+    end_assets:endAssets,
+    return_rate:returnRate,
+    suggested_withdrawal:Math.round(suggested),
+    actual_withdrawal:actualWithdrawal,
+    rule_triggered:rule,
+    calc_detail:detail
+  };
+
+  sb.from('retirement_years').upsert(row,{onConflict:'user_id,year'}).then(function(res){
+    if(res.error){toast('儲存失敗: '+res.error.message);return;}
+    toast('✓ '+yr+' 年度已儲存');
+    renderRetire();
+  });
+}
+
+function deleteRetireYear(yr){
+  if(!confirm('確定要刪除 '+yr+' 年度的紀錄嗎？'))return;
+  sb.from('retirement_years').delete().eq('user_id',st.userId).eq('year',yr).then(function(res){
+    if(res.error){toast('刪除失敗: '+res.error.message);return;}
+    retireYears=retireYears.filter(function(r){return r.year!==yr;});
+    delete _retExpanded[yr];
+    toast('✓ '+yr+' 年度已刪除');
+    renderRetire();
+  });
+}
+
+function renderRetireHistory(){
+  var html='<div style="background:var(--bg1);border-radius:var(--r);border:1px solid var(--bg3)">';
+  retireYears.slice().reverse().forEach(function(yr){
+    var rateStr=yr.return_rate!==null?(yr.return_rate>=0?'+':'')+(yr.return_rate*100).toFixed(1)+'%':'--';
+    var rateClass=yr.return_rate!==null?(yr.return_rate>=0?'g':'r'):'';
+    var ruleBg='var(--bg3)';
+    if(yr.rule_triggered.indexOf('🚨')!==-1)ruleBg='var(--rbg)';
+    else if(yr.rule_triggered.indexOf('🔴')!==-1)ruleBg='var(--rbg)';
+    else if(yr.rule_triggered.indexOf('🟡')!==-1)ruleBg='var(--ambg)';
+    else if(yr.rule_triggered.indexOf('🔵')!==-1)ruleBg='var(--bbg)';
+
+    html+='<div class="ret-yr-row" onclick="toggleRetYr('+yr.year+')">';
+    html+='<div class="ret-yr-year">'+yr.year+'</div>';
+    html+='<div class="ret-yr-info">';
+    html+='<div class="ret-yr-assets">'+ccySym()+' '+fmtN(cvt(yr.end_assets))+'</div>';
+    html+='<div class="ret-yr-sub">報酬 <span class="'+rateClass+'">'+rateStr+'</span> · 建議 '+fmtN(cvt(yr.suggested_withdrawal))+' · 已提 '+fmtN(cvt(yr.actual_withdrawal))+'</div>';
+    html+='</div>';
+    html+='<div class="ret-yr-rule" style="background:'+ruleBg+'">'+yr.rule_triggered+'</div>';
+    html+='<button class="ret-yr-del" onclick="event.stopPropagation();deleteRetireYear('+yr.year+')" title="刪除此年度">✕</button>';
+    html+='</div>';
+    // expandable detail
+    html+='<div class="ret-yr-expand'+(_retExpanded[yr.year]?' open':'')+'" id="ret-exp-'+yr.year+'">';
+    var d=yr.calc_detail||{};
+    html+='<div style="display:flex;flex-direction:column;gap:4px">';
+    html+='<div><span style="color:var(--fg2)">基礎提領額：</span><span style="font-family:var(--mono)">'+fmtN(Math.round(d.basis||0))+'</span>'+(d.isFirst?' (首年: P₀ x R₀)':' (前年建議額)')+'</div>';
+    if(d.emergencyReset)html+='<div><span style="color:var(--amber)">緊急重設：</span>資產回升至50%以上，重算基礎 = '+fmtN(Math.round(d.basisAfterReset||0))+'</div>';
+    if(d.inflAdj)html+='<div><span style="color:var(--fg2)">通膨調整後：</span><span style="font-family:var(--mono)">'+fmtN(Math.round(d.inflAdj))+'</span></div>';
+    if(d.ruleNote)html+='<div><span style="color:var(--fg2)">規則：</span>'+d.ruleNote+'</div>';
+    html+='<div><span style="color:var(--fg2)">最終建議：</span><span style="font-family:var(--mono);font-weight:600">'+fmtN(Math.round(d.suggested||0))+'</span></div>';
+    html+='</div>';
+    html+='</div>';
+  });
+  html+='</div>';
+  return html;
+}
+
+function toggleRetYr(year){
+  _retExpanded[year]=!_retExpanded[year];
+  var el=$('ret-exp-'+year);
+  if(el)el.classList.toggle('open');
+}
+
+function renderRetireChart(){
+  var canvas=$('ret-chart');
+  if(!canvas||retireYears.length<1)return;
+  var ctx=canvas.getContext('2d');
+  var W=canvas.width,H=canvas.height;
+  var pad={t:20,r:20,b:30,l:60};
+  var cw=W-pad.l-pad.r,ch=H-pad.t-pad.b;
+  ctx.clearRect(0,0,W,H);
+
+  var years=retireYears.map(function(r){return r.year;});
+  var assets=retireYears.map(function(r){return r.end_assets;});
+  var withdrawals=retireYears.map(function(r){return r.suggested_withdrawal;});
+
+  var allVals=assets.concat(withdrawals);
+  var maxV=Math.max.apply(null,allVals);
+  var minV=Math.min.apply(null,allVals);
+  if(maxV===minV){maxV+=1;minV-=1;}
+  var range=maxV-minV;
+
+  function xPos(i){return pad.l+(retireYears.length===1?cw/2:i/(retireYears.length-1)*cw);}
+  function yPos(v){return pad.t+ch-(v-minV)/range*ch;}
+
+  // grid lines
+  ctx.strokeStyle='rgba(255,255,255,.06)';
+  ctx.lineWidth=1;
+  for(var g=0;g<=4;g++){
+    var gy=pad.t+ch*g/4;
+    ctx.beginPath();ctx.moveTo(pad.l,gy);ctx.lineTo(W-pad.r,gy);ctx.stroke();
+  }
+
+  // draw line helper
+  function drawLine(vals,color){
+    ctx.strokeStyle=color;ctx.lineWidth=2;ctx.beginPath();
+    for(var i=0;i<vals.length;i++){
+      var x=xPos(i),y=yPos(vals[i]);
+      if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+    }
+    ctx.stroke();
+    // dots
+    ctx.fillStyle=color;
+    for(var j=0;j<vals.length;j++){
+      ctx.beginPath();ctx.arc(xPos(j),yPos(vals[j]),3,0,Math.PI*2);ctx.fill();
+    }
+  }
+
+  drawLine(assets,'#1db954');
+  drawLine(withdrawals,'#3d8ef8');
+
+  // x axis labels
+  ctx.fillStyle='rgba(255,255,255,.4)';ctx.font='10px sans-serif';ctx.textAlign='center';
+  years.forEach(function(yr,i){
+    ctx.fillText(yr,xPos(i),H-pad.b+16);
+  });
+
+  // y axis labels
+  ctx.textAlign='right';
+  for(var k=0;k<=4;k++){
+    var val=minV+range*(4-k)/4;
+    ctx.fillText(fmtN(Math.round(val/10000))+'萬',pad.l-6,pad.t+ch*k/4+4);
+  }
+
+  // legend
+  ctx.textAlign='left';ctx.font='10px sans-serif';
+  ctx.fillStyle='#1db954';ctx.fillRect(W-pad.r-100,6,10,10);
+  ctx.fillStyle='rgba(255,255,255,.5)';ctx.fillText('期末資產',W-pad.r-86,15);
+  ctx.fillStyle='#3d8ef8';ctx.fillRect(W-pad.r-100,20,10,10);
+  ctx.fillStyle='rgba(255,255,255,.5)';ctx.fillText('建議提領',W-pad.r-86,29);
 }
 
 // ── PWA: Service Worker registration ──

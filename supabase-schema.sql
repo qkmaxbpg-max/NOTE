@@ -64,6 +64,32 @@ CREATE TABLE categories (
     cat_group   TEXT DEFAULT ''
 );
 
+-- Retirement config (one per user)
+CREATE TABLE retirement_config (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    initial_principal DOUBLE PRECISION NOT NULL,
+    withdrawal_rate   DOUBLE PRECISION NOT NULL,
+    inflation_rate    DOUBLE PRECISION NOT NULL DEFAULT 2,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id)
+);
+
+-- Retirement yearly records
+CREATE TABLE retirement_years (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    year        INTEGER NOT NULL,
+    end_assets  DOUBLE PRECISION NOT NULL,
+    return_rate DOUBLE PRECISION,
+    suggested_withdrawal DOUBLE PRECISION,
+    actual_withdrawal    DOUBLE PRECISION DEFAULT 0,
+    rule_triggered       TEXT DEFAULT '',
+    calc_detail          JSONB,
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, year)
+);
+
 -- ============================================================
 -- INDEXES
 -- ============================================================
@@ -74,6 +100,8 @@ CREATE INDEX idx_transactions_date ON transactions(date);
 CREATE INDEX idx_transactions_account_id ON transactions(account_id);
 CREATE INDEX idx_groups_user_id ON groups(user_id);
 CREATE INDEX idx_categories_user_id ON categories(user_id);
+CREATE INDEX idx_retirement_config_user_id ON retirement_config(user_id);
+CREATE INDEX idx_retirement_years_user_id ON retirement_years(user_id);
 
 -- ============================================================
 -- ROW LEVEL SECURITY
@@ -84,6 +112,8 @@ ALTER TABLE accounts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE groups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE retirement_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE retirement_years ENABLE ROW LEVEL SECURITY;
 
 -- Permissive policies allowing all operations for anon role
 -- (personal app, single user, no multi-tenancy)
@@ -101,6 +131,12 @@ CREATE POLICY "Allow all access for anon" ON groups
     FOR ALL TO anon USING (true) WITH CHECK (true);
 
 CREATE POLICY "Allow all access for anon" ON categories
+    FOR ALL TO anon USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access for anon" ON retirement_config
+    FOR ALL TO anon USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access for anon" ON retirement_years
     FOR ALL TO anon USING (true) WITH CHECK (true);
 
 -- ============================================================

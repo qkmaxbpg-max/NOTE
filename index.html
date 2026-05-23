@@ -15,7 +15,7 @@
 <!-- PWA: common -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=26">
+<link rel="stylesheet" href="style.css?v=28">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -40,10 +40,9 @@
       <svg viewBox="0 0 20 20" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><circle cx="10" cy="10" r="7"/><path d="M10 6v4l3 2"/></svg>
       <span>資金計算工具</span>
     </div>
-    <div class="sidenav-item disabled" onclick="return false">
+    <div class="sidenav-item" onclick="navTo('retire')">
       <svg viewBox="0 0 20 20" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M4 15l3-3 2 2 4-5 3 4"/><rect x="2" y="3" width="16" height="13" rx="2"/></svg>
       <span>退休動態提領分析</span>
-      <span style="font-size:10px;color:var(--fg3);margin-left:auto">開發中</span>
     </div>
   </div>
   <!-- user switcher -->
@@ -273,6 +272,9 @@
   <div id="devPage" class="lev-scroll" style="display:none;flex-direction:column;flex:1;min-height:0;overflow-y:scroll;padding:14px 22px 90px">
     <div id="calcHub"></div>
     <div id="calcDetail" style="display:none"></div>
+  </div>
+  <div id="retirePage" class="lev-scroll" style="display:none;flex-direction:column;flex:1;min-height:0;overflow-y:scroll;padding:14px 22px 90px">
+    <div id="retire-content"></div>
   </div>
 </div>
 
@@ -706,6 +708,10 @@
         <label>關聯信貸（選填）</label>
         <select id="txs-fund-source" style="width:100%;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:10px 12px;font-family:var(--font);font-size:14px;color:var(--fg0);-webkit-appearance:none"><option value="">無</option></select>
       </div>
+      <div class="field" style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" id="tx-sell-retire" style="width:18px;height:18px;accent-color:var(--green)">
+        <label for="tx-sell-retire" style="font-size:13px;color:var(--fg1);cursor:pointer">計入動態提領</label>
+      </div>
       <div class="field"><label>日期</label><input type="date" id="tx-sell-date"></div>
       <button class="subbtn" onclick="submitTxSell()">賣出</button>
     </div>
@@ -917,6 +923,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=26"></script>
+<script src="app.js?v=28"></script>
 </body>
 </html>

@@ -678,3 +678,37 @@ body.light .calc-card:hover{background:rgba(29,185,84,.06);border-color:var(--gr
 body.light .calc-result{background:#fff;border-color:rgba(0,0,0,.07)}
 body.light .calc-hist-item{background:#fff;border-color:rgba(0,0,0,.07)}
 body.light .irr-row input{background:#f5f5f2;border-color:rgba(0,0,0,.1)}
+
+/* ── Retirement page ── */
+.ret-setup{max-width:400px;margin:0 auto;padding:20px 0}
+.ret-config-bar{display:flex;gap:12px;align-items:center;padding:10px 14px;background:var(--bg2);border-radius:var(--r);margin-bottom:16px;flex-wrap:wrap}
+.ret-config-item{font-size:12px;color:var(--fg2)}
+.ret-config-val{font-weight:600;color:var(--fg0);font-family:var(--mono)}
+.ret-calc-btn{width:100%;padding:14px;background:var(--green);color:#000;font-weight:600;font-size:14px;border:none;border-radius:var(--r);cursor:pointer;margin-bottom:20px}
+.ret-calc-btn:active{opacity:.8}
+.ret-manual-btn{width:auto;flex:none;padding:14px 18px;background:var(--bg3);color:var(--fg1);border:1px solid var(--bg4);font-size:12px}
+.ret-manual-btn.active{background:var(--bg4);color:var(--fg0);border-color:var(--green)}
+.ret-manual-panel{max-height:0;overflow:hidden;transition:max-height .25s ease,opacity .2s ease;opacity:0;margin-bottom:0}
+.ret-manual-panel.open{max-height:280px;opacity:1;margin-bottom:16px}
+.ret-manual-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.ret-manual-grid .field{margin-bottom:0}
+.ret-manual-grid .field label{font-size:11px;color:var(--fg2);margin-bottom:4px;display:block}
+.ret-manual-grid .field input{width:100%;padding:10px;background:var(--bg2);border:1px solid var(--bg4);border-radius:var(--rs);color:var(--fg0);font-size:13px}
+.ret-yr-row{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--bg3);cursor:pointer;position:relative}
+.ret-yr-row:last-child{border-bottom:none}
+.ret-yr-year{font-weight:600;font-size:14px;color:var(--fg0);width:50px;flex-shrink:0}
+.ret-yr-info{flex:1;min-width:0}
+.ret-yr-assets{font-size:13px;font-family:var(--mono);color:var(--fg0)}
+.ret-yr-sub{font-size:11px;color:var(--fg2)}
+.ret-yr-rule{font-size:11px;padding:2px 8px;border-radius:6px;flex-shrink:0}
+.ret-yr-del{display:none;position:absolute;right:6px;top:6px;width:20px;height:20px;border:none;border-radius:50%;background:var(--red);color:#fff;font-size:11px;cursor:pointer;align-items:center;justify-content:center;line-height:1;padding:0}
+.ret-yr-row:hover .ret-yr-del{display:flex}
+.ret-yr-expand{display:none;padding:10px 14px;background:var(--bg2);border-bottom:1px solid var(--bg3);font-size:12px}
+.ret-yr-expand.open{display:block}
+.ret-chart-wrap{background:var(--bg2);border-radius:var(--r);padding:14px;margin-bottom:16px}
+body.light .ret-config-bar{background:#fff;border:1px solid rgba(0,0,0,.07)}
+body.light .ret-yr-expand{background:#f5f5f2}
+body.light .ret-chart-wrap{background:#fff;border:1px solid rgba(0,0,0,.07)}
+body.light .ret-manual-btn{background:#eee;color:#333;border-color:#ccc}
+body.light .ret-manual-btn.active{border-color:var(--green)}
+body.light .ret-manual-grid .field input{background:#fff;border-color:#ddd;color:#111}
