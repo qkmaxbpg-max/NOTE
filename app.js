@@ -2769,6 +2769,8 @@ function renderTx(){
   if(i)i.textContent=fmtN(cvt(inc));
   if(e)e.textContent=fmtN(cvt(Math.abs(exp)));
   var scCcy=$('sc-ccy');if(scCcy)scCcy.textContent=ccySym();
+  // Re-apply search filters if active
+  if(_txFilterActive&&!_txDateRangeData){filterTxs();}
 }
 
 function delTransferPair(ev,idx){
@@ -3992,7 +3994,14 @@ function selectMonth(year,month){
   st.curMonth=month;st.curYear=year;
   $('mLbl').textContent=year+' 年 '+MONTHS[month]+' 月';
   st.pickerOpen=false;$('mPicker').style.display='none';$('pov').classList.remove('on');$('mChev').style.transform='';
-  loadTx().then(function(){renderTx();renderAnalysis();});
+  // clear date range filter on month change
+  if(_txDateRangeData){_txDateRangeData=null;_txFilterActive=false;_txFiltered=null;var df=$('txDateFrom');if(df)df.value='';var dt=$('txDateTo');if(dt)dt.value='';}
+  loadTx().then(function(){
+    renderTx();
+    // reload analysis period data if needed
+    if(_anlPeriod!=='month'){_loadAnlPeriodData(_anlPeriod);}
+    else{renderAnalysis();}
+  });
 }
 
 function setPer(btn){
@@ -6505,6 +6514,466 @@ function delRecurItem(idx){
   localStorage.setItem('ft_recur_items_'+st.userId,JSON.stringify(_recurItems));
   _renderRecurList();
   toast('已刪除定期交易');
+}
+
+// ══════════════════════════════════════════════════════
+// ── Feature: Transaction Search & Filter ──
+// ══════════════════════════════════════════════════════
+var _txFilterActive=false;
+var _txFiltered=null; // filtered tx array when date range spans months
+var _txDateRangeData=null; // fetched cross-month data
+
+function toggleTxSearch(){
+  var bar=$('txFilterBar');
+  if(!bar)return;
+  var show=bar.style.display==='none';
+  bar.style.display=show?'':'none';
+  if(show){
+    // populate category filter
+    var sel=$('txCatFilter');
+    var html='<option value="">全部類別</option>';
+    categories.forEach(function(c){html+='<option value="'+c.name+'">'+c.name+'</option>';});
+    sel.innerHTML=html;
+    $('txSearchInput').focus();
+  } else {
+    clearTxFilters();
+  }
+}
+
+function clearTxFilters(){
+  $('txSearchInput').value='';
+  $('txCatFilter').value='';
+  $('txDateFrom').value='';
+  $('txDateTo').value='';
+  _txFilterActive=false;
+  _txFiltered=null;
+  _txDateRangeData=null;
+  renderTx();
+}
+
+function filterTxDateRange(){
+  var from=$('txDateFrom').value;
+  var to=$('txDateTo').value;
+  if(from&&to){
+    // fetch transactions across date range from supabase
+    sb.from('transactions').select('*').eq('user_id',st.userId)
+      .gte('date',from).lte('date',to)
+      .order('date',{ascending:false}).order('id',{ascending:false})
+      .then(function(res){
+        _txDateRangeData=(res.data||[]).map(function(r){
+          return {id:r.id,date:r.date,name:r.name,cat:r.category,amt:r.amount,note:r.note||'',icon:r.icon||'',rec:!!r.recurring,account_id:r.account_id};
+        });
+        _txFilterActive=true;
+        filterTxs();
+      });
+  } else {
+    _txDateRangeData=null;
+    _txFilterActive=!!(($('txSearchInput').value)||($('txCatFilter').value));
+    filterTxs();
+  }
+}
+
+function filterTxs(){
+  var keyword=($('txSearchInput').value||'').toLowerCase().trim();
+  var cat=$('txCatFilter').value;
+  var source=_txDateRangeData||txs;
+  var filtered=source.filter(function(t){
+    if(keyword){
+      var nameMatch=(t.name||'').toLowerCase().indexOf(keyword)>=0;
+      var noteMatch=(t.note||'').toLowerCase().indexOf(keyword)>=0;
+      if(!nameMatch&&!noteMatch) return false;
+    }
+    if(cat&&t.cat!==cat) return false;
+    return true;
+  });
+  _txFilterActive=!!(keyword||cat||_txDateRangeData);
+  _txFiltered=_txFilterActive?filtered:null;
+  renderTxFiltered(filtered);
+}
+
+function renderTxFiltered(list){
+  var days=['日','一','二','三','四','五','六'],html='';
+  var groups={};
+  list.forEach(function(t){if(!groups[t.date])groups[t.date]=[];groups[t.date].push(t);});
+  Object.keys(groups).sort(function(a,b){return b.localeCompare(a);}).forEach(function(date){
+    var d=new Date(date+'T00:00:00'),tot=groups[date].reduce(function(s,t){return s+t.amt;},0);
+    html+='<div class="tx-grp" style="margin-bottom:10px">';
+    html+='<div class="tx-day-hd"><span class="tx-day">'+date.slice(5,7)+'/'+date.slice(8)+'（週'+days[d.getDay()]+'）</span>';
+    html+='<span class="tx-day-tot">'+ccySym()+' '+(tot>=0?'+':'')+cvt(tot).toLocaleString()+'</span></div>';
+    groups[date].forEach(function(t){
+      var pos=t.amt>=0;
+      var str=(pos?'+':'')+cvt(t.amt).toLocaleString();
+      html+='<div class="tx-row">';
+      html+='<div class="tx-emo" style="background:'+(pos?'var(--gbg)':'var(--bg3)')+'">'+( t.icon||'💳')+'</div>';
+      html+='<div class="tx-info"><div class="tx-nm">'+t.name+'</div>';
+      if(t.note) html+='<div class="tx-meta">'+t.note+'</div>';
+      html+='</div>';
+      html+='<div class="tx-val '+(pos?'g':'n')+'">'+str+'</div>';
+      html+='</div>';
+    });
+    html+='</div>';
+  });
+  if(!html)html='<div style="text-align:center;color:var(--fg3);padding:48px 0;font-size:14px">無符合條件的記錄</div>';
+  $('tx-wrap').innerHTML=html;
+  // Update summary from filtered data
+  var nt=list.filter(function(t){return t.cat!=='轉帳';});
+  var inc=nt.filter(function(t){return t.amt>0;}).reduce(function(s,t){return s+t.amt;},0);
+  var exp=nt.filter(function(t){return t.amt<0;}).reduce(function(s,t){return s+t.amt;},0);
+  var bal=inc+exp;
+  var b=$('sc-bal'),i=$('sc-inc'),e=$('sc-exp');
+  if(b)b.textContent=(bal>=0?'+':'')+cvt(bal).toLocaleString();
+  if(i)i.textContent=fmtN(cvt(inc));
+  if(e)e.textContent=fmtN(cvt(Math.abs(exp)));
+}
+
+// ══════════════════════════════════════════════════════
+// ── Feature: Analysis Tab — Quarter/Year views ──
+// ══════════════════════════════════════════════════════
+var _anlPeriod='month';
+var _anlTxCache=null; // cached tx data for quarter/year
+
+function setAnlPeriod(period,btn){
+  document.querySelectorAll('.anl-per-btn').forEach(function(b){b.classList.remove('on');});
+  btn.classList.add('on');
+  _anlPeriod=period;
+  if(period==='month'){
+    _anlTxCache=null;
+    renderAnalysis();
+  } else {
+    _loadAnlPeriodData(period);
+  }
+}
+
+function _getQuarterRange(year,month){
+  // month is 0-based index in MONTHS (0=January)
+  var q=Math.floor(month/3);
+  var startM=q*3; // 0-based
+  var endM=startM+2;
+  var from=year+'-'+MONTHS[startM]+'-01';
+  var lastDay=new Date(year,endM+1,0).getDate();
+  var to=year+'-'+MONTHS[endM]+'-'+String(lastDay).padStart(2,'0');
+  return {from:from,to:to,q:q+1,startM:startM,endM:endM};
+}
+
+function _getYearRange(year){
+  return {from:year+'-01-01',to:year+'-12-31'};
+}
+
+function _loadAnlPeriodData(period){
+  var range;
+  if(period==='quarter'){
+    range=_getQuarterRange(st.curYear,st.curMonth);
+  } else {
+    range=_getYearRange(st.curYear);
+  }
+  sb.from('transactions').select('*').eq('user_id',st.userId)
+    .gte('date',range.from).lte('date',range.to)
+    .order('date',{ascending:false}).order('id',{ascending:false})
+    .then(function(res){
+      _anlTxCache=(res.data||[]).map(function(r){
+        return {id:r.id,date:r.date,name:r.name,cat:r.category,amt:r.amount,note:r.note||'',icon:r.icon||'',rec:!!r.recurring,account_id:r.account_id};
+      });
+      _renderAnlPeriod(period,range);
+    });
+}
+
+function _renderAnlPeriod(period,range){
+  var txData=_anlTxCache||[];
+  var nt=txData.filter(function(t){return t.cat!=='轉帳';});
+  var inc=nt.filter(function(t){return t.amt>0;}).reduce(function(s,t){return s+t.amt;},0);
+  var exp=nt.filter(function(t){return t.amt<0;}).reduce(function(s,t){return s+t.amt;},0);
+  var bal=inc+exp;
+
+  // Update summary banner
+  var periodLabel=period==='quarter'?'季結餘':'年結餘';
+  var anlPLbl=$('anl-period-lbl');
+  if(anlPLbl) anlPLbl.innerHTML=periodLabel+' (<span id="anl-ccy">'+ccySym()+'</span>)';
+  $('anl-bal').textContent=(bal>=0?'+':'')+cvt(bal).toLocaleString();
+  $('anl-exp').textContent=fmtN(cvt(Math.abs(exp)));
+  $('anl-inc').textContent=fmtN(cvt(inc));
+  var expLbl=$('anl-exp-lbl');
+  var incLbl=$('anl-inc-lbl');
+  if(expLbl) expLbl.innerHTML=(period==='quarter'?'季支出 ':'年支出 ')+'<b id="anl-exp" style="color:#fff;font-weight:600">'+fmtN(cvt(Math.abs(exp)))+'</b>';
+  if(incLbl) incLbl.innerHTML=(period==='quarter'?'季收入 ':'年收入 ')+'<b id="anl-inc" style="color:#fff;font-weight:600">'+fmtN(cvt(inc))+'</b>';
+
+  // Update analysis label
+  var anlLblEl=$('anlLbl');
+  if(anlLblEl){
+    if(period==='quarter') anlLblEl.textContent=st.curYear+' 年 Q'+range.q;
+    else anlLblEl.textContent=st.curYear+' 年';
+  }
+
+  // Render donut with period data
+  _renderDonutPeriod('exp',txData);
+
+  // Show bar chart for year view
+  var barWrap=$('anl-bar-wrap');
+  if(barWrap){
+    if(period==='year'){
+      barWrap.style.display='';
+      _renderMonthlyBarChart(txData);
+    } else if(period==='quarter'){
+      barWrap.style.display='';
+      _renderQuarterBarChart(txData,range);
+    } else {
+      barWrap.style.display='none';
+    }
+  }
+
+  // Keep net worth chart
+  renderChart(chartPeriod);
+}
+
+function _renderDonutPeriod(type,txData){
+  var filtered=type==='exp'?txData.filter(function(t){return t.amt<0&&t.cat!=='轉帳';}):txData.filter(function(t){return t.amt>0&&t.cat!=='轉帳';});
+  var total=filtered.reduce(function(s,t){return s+Math.abs(t.amt);},0);
+  var catMap={};
+  filtered.forEach(function(t){
+    if(!catMap[t.cat])catMap[t.cat]={sum:0,count:0};
+    catMap[t.cat].sum+=Math.abs(t.amt);
+    catMap[t.cat].count++;
+  });
+  var sorted=Object.keys(catMap).sort(function(a,b){return catMap[b].sum-catMap[a].sum;});
+  var colors=['var(--green)','var(--red)','var(--amber)','var(--blue)','var(--purple)','var(--teal)'];
+  var circ=2*Math.PI*66;
+  var svgHtml='<circle cx="90" cy="90" r="66" fill="none" stroke="var(--bg4)" stroke-width="26"/>';
+  var offset=0;
+  sorted.forEach(function(cat,i){
+    var pct=total>0?catMap[cat].sum/total:0;
+    var dash=pct*circ,gap=circ-dash;
+    svgHtml+='<circle cx="90" cy="90" r="66" fill="none" stroke="'+colors[i%colors.length]+'" stroke-width="26" stroke-dasharray="'+dash.toFixed(1)+' '+gap.toFixed(1)+'" stroke-dashoffset="'+(-offset).toFixed(1)+'" transform="rotate(-90 90 90)"/>';
+    offset+=dash;
+  });
+  $('donut-svg').innerHTML=svgHtml;
+  $('dov-lbl').textContent=type==='exp'?'總支出':'總收入';
+  $('dov-amt').textContent=(type==='exp'?'-':'+')+fmtN(cvt(total));
+  var dovCcy=$('dov-ccy');if(dovCcy)dovCcy.textContent=ccySym();
+  $('anl-legend').innerHTML=sorted.map(function(cat,i){
+    var pct=total>0?(catMap[cat].sum/total*100).toFixed(1):'0.0';
+    return '<div class="leg"><div class="leg-d" style="background:'+colors[i%colors.length]+'"></div>'+cat+'<span class="leg-p">'+pct+'%</span></div>';
+  }).join('');
+  $('anl-cat-card').innerHTML=sorted.map(function(cat,i){
+    return '<div class="cat-row"><div class="cat-l"><div class="cat-d" style="background:'+colors[i%colors.length]+'"></div><div><div class="cat-nm">'+cat+'</div><div class="cat-cnt">'+catMap[cat].count+' 筆</div></div></div><div class="cat-v">'+(type==='exp'?'-':'+')+ fmtN(cvt(catMap[cat].sum))+'</div></div>';
+  }).join('');
+}
+
+function _renderMonthlyBarChart(txData){
+  var monthlyExp=[];
+  var labels=[];
+  for(var m=0;m<12;m++){
+    var prefix=st.curYear+'-'+MONTHS[m];
+    var mTxs=txData.filter(function(t){return t.date.indexOf(prefix)===0&&t.amt<0&&t.cat!=='轉帳';});
+    var total=mTxs.reduce(function(s,t){return s+Math.abs(t.amt);},0);
+    monthlyExp.push(total);
+    labels.push((m+1)+'月');
+  }
+  _drawBarChart(monthlyExp,labels,'anl-bar-svg','anl-bar-ax');
+  $('anl-bar-lbl').textContent='月度支出趨勢';
+}
+
+function _renderQuarterBarChart(txData,range){
+  var monthlyExp=[];
+  var labels=[];
+  for(var m=range.startM;m<=range.endM;m++){
+    var prefix=st.curYear+'-'+MONTHS[m];
+    var mTxs=txData.filter(function(t){return t.date.indexOf(prefix)===0&&t.amt<0&&t.cat!=='轉帳';});
+    var total=mTxs.reduce(function(s,t){return s+Math.abs(t.amt);},0);
+    monthlyExp.push(total);
+    labels.push((m+1)+'月');
+  }
+  _drawBarChart(monthlyExp,labels,'anl-bar-svg','anl-bar-ax');
+  $('anl-bar-lbl').textContent='Q'+range.q+' 月度支出';
+}
+
+function _drawBarChart(values,labels,svgId,axId){
+  var svg=$(svgId),axEl=$(axId);
+  if(!svg)return;
+  var W=340,H=150,padT=20,padB=5,padL=10,padR=10;
+  var n=values.length;
+  if(!n){svg.innerHTML='<text x="170" y="75" text-anchor="middle" fill="var(--fg2)" font-size="12">暫無資料</text>';return;}
+  var maxV=Math.max.apply(null,values);
+  if(maxV<1)maxV=1;
+  var barW=Math.min(28,(W-padL-padR)/n*0.6);
+  var gap=(W-padL-padR)/n;
+  var cH=H-padT-padB;
+  var svgHtml='';
+  // baseline
+  svgHtml+='<line x1="'+padL+'" y1="'+(H-padB)+'" x2="'+(W-padR)+'" y2="'+(H-padB)+'" stroke="var(--bg4)" stroke-width="0.5"/>';
+  values.forEach(function(v,i){
+    var x=padL+gap*i+gap/2-barW/2;
+    var barH=maxV>0?(v/maxV)*cH:0;
+    var y=H-padB-barH;
+    svgHtml+='<rect x="'+x.toFixed(1)+'" y="'+y.toFixed(1)+'" width="'+barW.toFixed(1)+'" height="'+barH.toFixed(1)+'" rx="3" fill="var(--red)" opacity=".75"/>';
+    if(v>0){
+      svgHtml+='<text x="'+(x+barW/2).toFixed(1)+'" y="'+(y-4).toFixed(1)+'" text-anchor="middle" fill="var(--fg2)" font-size="8" font-family="var(--mono)">'+fmtN(cvt(v))+'</text>';
+    }
+  });
+  svg.innerHTML=svgHtml;
+  if(axEl) axEl.innerHTML=labels.map(function(l){return '<span>'+l+'</span>';}).join('');
+}
+
+// Override switchAnl to work with period data
+var _origSwitchAnl=switchAnl;
+switchAnl=function(type,btn){
+  document.querySelectorAll('.anl-btn').forEach(function(b){b.classList.remove('on');});
+  btn.classList.add('on');
+  if(_anlPeriod!=='month'&&_anlTxCache){
+    _renderDonutPeriod(type,_anlTxCache);
+  } else {
+    renderDonut(type);
+  }
+};
+
+// Override renderAnalysis to respect period
+var _origRenderAnalysis=renderAnalysis;
+renderAnalysis=function(){
+  if(_anlPeriod!=='month'&&_anlTxCache){
+    var range;
+    if(_anlPeriod==='quarter') range=_getQuarterRange(st.curYear,st.curMonth);
+    else range=_getYearRange(st.curYear);
+    _renderAnlPeriod(_anlPeriod,range);
+    return;
+  }
+  // reset to month labels
+  var anlPLbl=$('anl-period-lbl');
+  if(anlPLbl) anlPLbl.innerHTML='月結餘 (<span id="anl-ccy">'+ccySym()+'</span>)';
+  var expLbl=$('anl-exp-lbl');
+  var incLbl=$('anl-inc-lbl');
+  var barWrap=$('anl-bar-wrap');
+  if(barWrap) barWrap.style.display='none';
+  _origRenderAnalysis();
+  // restore month labels after original render
+  var nt=txs.filter(function(t){return t.cat!=='轉帳';});
+  var incV=nt.filter(function(t){return t.amt>0;}).reduce(function(s,t){return s+t.amt;},0);
+  var expV=nt.filter(function(t){return t.amt<0;}).reduce(function(s,t){return s+t.amt;},0);
+  if(expLbl) expLbl.innerHTML='月支出 <b id="anl-exp" style="color:#fff;font-weight:600">'+fmtN(cvt(Math.abs(expV)))+'</b>';
+  if(incLbl) incLbl.innerHTML='月收入 <b id="anl-inc" style="color:#fff;font-weight:600">'+fmtN(cvt(incV))+'</b>';
+};
+
+// ══════════════════════════════════════════════════════
+// ── Feature: Data Export (CSV + Excel) ──
+// ══════════════════════════════════════════════════════
+function toggleExportMenu(context){
+  var menuId=context+'-export-menu';
+  var menu=$(menuId);
+  if(!menu)return;
+  // Close any other open export menus
+  document.querySelectorAll('.export-menu').forEach(function(m){
+    if(m.id!==menuId) m.classList.remove('on');
+  });
+  if(menu.classList.contains('on')){
+    menu.classList.remove('on');
+    return;
+  }
+  menu.innerHTML='<div class="export-opt" onclick="event.stopPropagation();doExport(\'csv\',\''+context+'\')">匯出 CSV</div>'
+    +'<div class="export-opt" onclick="event.stopPropagation();doExport(\'excel\',\''+context+'\')">匯出 Excel</div>';
+  menu.classList.add('on');
+  // close on outside click
+  setTimeout(function(){
+    var handler=function(e){
+      if(!menu.contains(e.target)){menu.classList.remove('on');document.removeEventListener('click',handler);}
+    };
+    document.addEventListener('click',handler);
+  },0);
+}
+
+function _getExportData(context){
+  var rows=[];
+  if(context==='tx'){
+    var source=(_txFilterActive&&_txFiltered)?_txFiltered:txs;
+    source.forEach(function(t){
+      rows.push({
+        date:t.date,
+        name:t.name||t.cat,
+        cat:t.cat,
+        amt:t.amt,
+        note:t.note||'',
+        acct:getAcctName(t.account_id)||''
+      });
+    });
+  } else if(context==='anl'){
+    var source2=(_anlPeriod!=='month'&&_anlTxCache)?_anlTxCache:txs;
+    source2.filter(function(t){return t.cat!=='轉帳';}).forEach(function(t){
+      rows.push({
+        date:t.date,
+        name:t.name||t.cat,
+        cat:t.cat,
+        amt:t.amt,
+        note:t.note||'',
+        acct:getAcctName(t.account_id)||''
+      });
+    });
+  }
+  return rows;
+}
+
+function doExport(format,context){
+  var rows=_getExportData(context);
+  // close menu
+  var menu=$(context+'-export-menu');
+  if(menu)menu.classList.remove('on');
+  if(!rows.length){toast('無資料可匯出');return;}
+  if(format==='csv') _exportCSV(rows,context);
+  else _exportExcel(rows,context);
+}
+
+function _exportCSV(rows,context){
+  var header='日期,名稱,分類,金額,備註,帳戶';
+  var lines=[header];
+  rows.forEach(function(r){
+    lines.push([
+      r.date,
+      '"'+(r.name||'').replace(/"/g,'""')+'"',
+      '"'+(r.cat||'').replace(/"/g,'""')+'"',
+      r.amt,
+      '"'+(r.note||'').replace(/"/g,'""')+'"',
+      '"'+(r.acct||'').replace(/"/g,'""')+'"'
+    ].join(','));
+  });
+  var csv='﻿'+lines.join('\n'); // BOM for Excel UTF-8
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  _downloadBlob(blob,_exportFilename(context,'csv'));
+  toast('已匯出 CSV');
+}
+
+function _exportExcel(rows,context){
+  var html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">';
+  html+='<head><meta charset="UTF-8"><!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet><x:Name>交易</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions></x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head>';
+  html+='<body><table border="1">';
+  html+='<tr><th>日期</th><th>名稱</th><th>分類</th><th>金額</th><th>備註</th><th>帳戶</th></tr>';
+  rows.forEach(function(r){
+    html+='<tr><td>'+(r.date||'')+'</td><td>'+(r.name||'')+'</td><td>'+(r.cat||'')+'</td><td>'+r.amt+'</td><td>'+(r.note||'')+'</td><td>'+(r.acct||'')+'</td></tr>';
+  });
+  html+='</table></body></html>';
+  var blob=new Blob([html],{type:'application/vnd.ms-excel;charset=utf-8'});
+  _downloadBlob(blob,_exportFilename(context,'xls'));
+  toast('已匯出 Excel');
+}
+
+function _exportFilename(context,ext){
+  var prefix='fintrack';
+  if(context==='tx'){
+    if(_txFilterActive&&$('txDateFrom').value) prefix+='_'+$('txDateFrom').value+'_'+$('txDateTo').value;
+    else prefix+='_'+st.curYear+'-'+MONTHS[st.curMonth];
+  } else {
+    if(_anlPeriod==='quarter'){
+      var q=Math.floor(st.curMonth/3)+1;
+      prefix+='_'+st.curYear+'Q'+q;
+    } else if(_anlPeriod==='year'){
+      prefix+='_'+st.curYear;
+    } else {
+      prefix+='_'+st.curYear+'-'+MONTHS[st.curMonth];
+    }
+  }
+  return prefix+'.'+ext;
+}
+
+function _downloadBlob(blob,filename){
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url;a.download=filename;
+  document.body.appendChild(a);a.click();
+  setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},100);
 }
 
 // ── PWA: Service Worker registration ──

@@ -15,7 +15,7 @@
 <!-- PWA: common -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=33">
+<link rel="stylesheet" href="style.css?v=34">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -176,8 +176,26 @@
           <span id="mLbl">2026 年 05 月</span>
           <svg id="mChev" viewBox="0 0 16 16" style="transition:transform .2s"><path d="M4 6l4 4 4-4"/></svg>
         </div>
-        <div class="ico-btn" style="width:32px;height:32px">
-          <svg viewBox="0 0 20 20" style="width:15px;height:15px"><path d="M13 11l4 4-1.5 1.5-4-4A6 6 0 118 2a6 6 0 015 9zm-5 1a4 4 0 100-8 4 4 0 000 8z" fill="currentColor"/></svg>
+        <div style="display:flex;gap:6px;align-items:center">
+          <div class="ico-btn tx-export-wrap" style="width:32px;height:32px;position:relative" onclick="toggleExportMenu('tx')">
+            <svg viewBox="0 0 20 20" style="width:15px;height:15px"><path d="M10 3v10M6 9l4 4 4-4M4 15h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+            <div class="export-menu" id="tx-export-menu"></div>
+          </div>
+          <div class="ico-btn" style="width:32px;height:32px" onclick="toggleTxSearch()">
+            <svg viewBox="0 0 20 20" style="width:15px;height:15px"><path d="M13 11l4 4-1.5 1.5-4-4A6 6 0 118 2a6 6 0 015 9zm-5 1a4 4 0 100-8 4 4 0 000 8z" fill="currentColor"/></svg>
+          </div>
+        </div>
+      </div>
+      <div class="tx-filter-bar" id="txFilterBar" style="display:none">
+        <div class="tx-filter-row">
+          <input type="text" id="txSearchInput" class="tx-search-input" placeholder="搜尋名稱或備註…" oninput="filterTxs()">
+          <select id="txCatFilter" class="tx-cat-filter" onchange="filterTxs()"><option value="">全部類別</option></select>
+        </div>
+        <div class="tx-filter-row">
+          <input type="date" id="txDateFrom" class="tx-date-input" onchange="filterTxDateRange()">
+          <span style="color:var(--fg3);font-size:12px;flex-shrink:0">至</span>
+          <input type="date" id="txDateTo" class="tx-date-input" onchange="filterTxDateRange()">
+          <button class="tx-clear-btn" onclick="clearTxFilters()">清除篩選</button>
         </div>
       </div>
       <div style="border-radius:var(--r);padding:20px;background:linear-gradient(135deg,#17a349,#1db954);position:relative;overflow:hidden;flex-shrink:0">
@@ -194,14 +212,25 @@
 
     <!-- 分析 -->
     <div class="page" id="p-analysis">
-      <div class="mbar"><div class="msel" onclick="togglePicker()" style="cursor:pointer"><span id="anlLbl">2026 年 05 月</span><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></div></div>
+      <div class="mbar">
+        <div class="msel" onclick="togglePicker()" style="cursor:pointer"><span id="anlLbl">2026 年 05 月</span><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></div>
+        <div class="ico-btn tx-export-wrap" style="width:32px;height:32px;position:relative" onclick="toggleExportMenu('anl')">
+          <svg viewBox="0 0 20 20" style="width:15px;height:15px"><path d="M10 3v10M6 9l4 4 4-4M4 15h12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+          <div class="export-menu" id="anl-export-menu"></div>
+        </div>
+      </div>
+      <div class="anl-period-row">
+        <button class="anl-per-btn on" onclick="setAnlPeriod('month',this)">月</button>
+        <button class="anl-per-btn" onclick="setAnlPeriod('quarter',this)">季</button>
+        <button class="anl-per-btn" onclick="setAnlPeriod('year',this)">年</button>
+      </div>
       <div style="border-radius:var(--r);padding:20px;background:linear-gradient(135deg,#17a349,#1db954);position:relative;overflow:hidden;flex-shrink:0">
         <div style="position:absolute;right:-30px;top:-30px;width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.08)"></div>
-        <div style="font-size:11px;color:rgba(255,255,255,.7);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">月結餘 (<span id="anl-ccy">NT$</span>)</div>
+        <div style="font-size:11px;color:rgba(255,255,255,.7);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px" id="anl-period-lbl">月結餘 (<span id="anl-ccy">NT$</span>)</div>
         <div id="anl-bal" style="font-family:var(--mono);font-size:32px;font-weight:500;color:#fff;letter-spacing:-.02em;margin-bottom:10px">—</div>
         <div style="display:flex;justify-content:space-between">
-          <span style="font-size:12px;color:rgba(255,255,255,.65)">月支出 <b id="anl-exp" style="color:#fff;font-weight:600">—</b></span>
-          <span style="font-size:12px;color:rgba(255,255,255,.65)">月收入 <b id="anl-inc" style="color:#fff;font-weight:600">—</b></span>
+          <span style="font-size:12px;color:rgba(255,255,255,.65)" id="anl-exp-lbl">月支出 <b id="anl-exp" style="color:#fff;font-weight:600">—</b></span>
+          <span style="font-size:12px;color:rgba(255,255,255,.65)" id="anl-inc-lbl">月收入 <b id="anl-inc" style="color:#fff;font-weight:600">—</b></span>
         </div>
       </div>
       <div class="anl-row"><button class="anl-btn on" onclick="switchAnl('exp',this)">支出</button><button class="anl-btn" onclick="switchAnl('inc',this)">收入</button></div>
@@ -215,6 +244,11 @@
         <div class="leg-row" id="anl-legend"></div>
       </div>
       <div class="cat-card" id="anl-cat-card"></div>
+      <div class="chart-wrap" id="anl-bar-wrap" style="display:none">
+        <div class="chart-hd"><div><div class="ch-lbl" id="anl-bar-lbl">月度支出趨勢</div></div></div>
+        <svg id="anl-bar-svg" viewBox="0 0 340 150" style="width:100%;height:150px" preserveAspectRatio="none"></svg>
+        <div class="chart-ax" id="anl-bar-ax"></div>
+      </div>
       <div class="chart-wrap">
         <div class="chart-hd">
           <div><div class="ch-lbl">淨資產趨勢</div><div class="ch-val" id="chart-ttl">—</div></div>
@@ -946,6 +980,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=33"></script>
+<script src="app.js?v=34"></script>
 </body>
 </html>

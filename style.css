@@ -784,3 +784,31 @@ body.light .set-edit-box{background:#f5f5f2;border-color:rgba(0,0,0,.1)}
 body.light .set-emoji-picker{background:#f5f5f2;border-color:rgba(0,0,0,.1)}
 body.light .set-recur-item{background:#f5f5f2}
 body.light .set-budget-input{background:#f5f5f2;border-color:rgba(0,0,0,.1)}
+
+/* ── Transaction Search & Filter ── */
+.tx-filter-bar{padding:0 0 8px;display:flex;flex-direction:column;gap:8px}
+.tx-filter-row{display:flex;gap:8px;align-items:center}
+.tx-search-input{flex:1;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:9px 12px;font-family:var(--font);font-size:13px;color:var(--fg0);outline:none}
+.tx-search-input:focus{border-color:var(--green)}
+.tx-cat-filter{width:120px;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:9px 10px;font-family:var(--font);font-size:13px;color:var(--fg0);outline:none;cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url('data:image/svg+xml,<svg viewBox="0 0 12 8" xmlns="http://www.w3.org/2000/svg"><path d="M1 1l5 5 5-5" stroke="%23888" fill="none" stroke-width="1.5"/></svg>');background-repeat:no-repeat;background-position:right 8px center;background-size:10px;padding-right:24px}
+.tx-date-input{flex:1;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:9px 10px;font-family:var(--font);font-size:12px;color:var(--fg0);outline:none;min-width:0}
+.tx-date-input:focus{border-color:var(--green)}
+.tx-clear-btn{padding:9px 14px;border-radius:var(--rs);border:1.5px solid var(--bg4);background:var(--bg2);color:var(--fg2);font-family:var(--font);font-size:12px;cursor:pointer;white-space:nowrap;flex-shrink:0}
+.tx-clear-btn:hover{background:var(--bg3);color:var(--fg0)}
+body.light .tx-search-input,body.light .tx-cat-filter,body.light .tx-date-input,body.light .tx-clear-btn{background:#f5f5f2;border-color:rgba(0,0,0,.1)}
+
+/* ── Export Menu ── */
+.tx-export-wrap{position:relative}
+.export-menu{display:none;position:absolute;top:100%;right:0;margin-top:6px;background:var(--bg1);border:1px solid var(--bg4);border-radius:var(--rs);box-shadow:0 8px 24px rgba(0,0,0,.35);z-index:20;min-width:130px;overflow:hidden}
+.export-menu.on{display:block}
+.export-opt{padding:11px 16px;font-size:13px;color:var(--fg0);cursor:pointer;white-space:nowrap}
+.export-opt:hover{background:var(--bg3)}
+.export-opt+.export-opt{border-top:1px solid var(--bg3)}
+body.light .export-menu{background:#fff;border-color:rgba(0,0,0,.1);box-shadow:0 4px 16px rgba(0,0,0,.12)}
+
+/* ── Analysis Period Tabs ── */
+.anl-period-row{display:flex;gap:4px;padding:2px 0 6px}
+.anl-per-btn{flex:1;padding:8px;border:1px solid var(--bg4);border-radius:var(--rs);background:transparent;font-family:var(--font);font-size:13px;font-weight:500;color:var(--fg2);cursor:pointer;text-align:center}
+.anl-per-btn.on{background:var(--green);color:#fff;border-color:var(--green)}
+body.light .anl-per-btn{border-color:rgba(0,0,0,.12)}
+body.light .anl-per-btn.on{background:var(--green);color:#fff;border-color:var(--green)}
