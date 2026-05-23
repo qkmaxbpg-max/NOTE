@@ -643,6 +643,7 @@ function navTo(page){
   $('leveragePage').style.display='none';
   $('devPage').style.display='none';
   $('retirePage').style.display='none';
+  $('settingsPage').style.display='none';
   if(page==='overview'){
     $('mainContent').style.display='flex';
     document.querySelectorAll('.sidenav-item')[0].classList.add('active');
@@ -654,6 +655,10 @@ function navTo(page){
     $('retirePage').style.display='flex';
     renderRetire();
     document.querySelectorAll('.sidenav-item')[3].classList.add('active');
+  } else if(page==='settings'){
+    $('settingsPage').style.display='flex';
+    renderSettings();
+    document.querySelectorAll('.sidenav-item')[4].classList.add('active');
   } else {
     $('devPage').style.display='flex';
     $('calcHub').style.display='';
@@ -6054,6 +6059,452 @@ function renderRetireChart(){
   ctx.fillStyle='rgba(255,255,255,.5)';ctx.fillText('期末資產',W-pad.r-86,15);
   ctx.fillStyle='#3d8ef8';ctx.fillRect(W-pad.r-100,20,10,10);
   ctx.fillStyle='rgba(255,255,255,.5)';ctx.fillText('建議提領',W-pad.r-86,29);
+}
+
+// ── Settings Page ──
+var _setOpen={cat:true,budget:false,recurring:false};
+var _setEditCat=null; // category being edited
+var _budgets=[];
+var _recurItems=[];
+
+function renderSettings(){
+  var el=$('settings-content');
+  if(!el)return;
+  var html='<div style="margin-bottom:20px"><div style="font-size:20px;font-weight:700;color:var(--fg0)">設定</div><div style="font-size:12px;color:var(--fg2);margin-top:4px">分類、預算與定期交易管理</div></div>';
+  // Section 1: 分類管理
+  html+=_renderSetSection('cat','📂','分類管理',_renderCatContent());
+  // Section 2: 預算設定
+  html+=_renderSetSection('budget','💰','預算設定',_renderBudgetContent());
+  // Section 3: 定期交易
+  html+=_renderSetSection('recurring','🔄','定期交易',_renderRecurContent());
+  el.innerHTML=html;
+  // load budgets from localStorage
+  _loadBudgetMode();
+  _loadRecurMode();
+}
+
+function _renderSetSection(key,ico,title,body){
+  var open=_setOpen[key];
+  var h='<div class="set-section'+(open?' open':'')+'" id="set-'+key+'">';
+  h+='<div class="set-section-head" onclick="toggleSetSection(\''+key+'\')">';
+  h+='<div class="set-section-left"><span class="set-section-ico">'+ico+'</span><span class="set-section-title">'+title+'</span></div>';
+  h+='<svg class="set-chev" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="4 6 8 10 12 6"/></svg>';
+  h+='</div>';
+  h+='<div class="set-section-body"'+(open?'':' style="display:none"')+'>';
+  h+=body;
+  h+='</div></div>';
+  return h;
+}
+
+function toggleSetSection(key){
+  _setOpen[key]=!_setOpen[key];
+  var sec=$('set-'+key);
+  if(!sec)return;
+  if(_setOpen[key]){
+    sec.classList.add('open');
+    sec.querySelector('.set-section-body').style.display='';
+  } else {
+    sec.classList.remove('open');
+    sec.querySelector('.set-section-body').style.display='none';
+  }
+}
+
+// ── Category Management ──
+function _renderCatContent(){
+  var h='<div id="set-cat-list">';
+  var grouped={};var ungrouped=[];
+  categories.forEach(function(c){
+    if(c.cat_group){
+      if(!grouped[c.cat_group])grouped[c.cat_group]=[];
+      grouped[c.cat_group].push(c);
+    } else {
+      ungrouped.push(c);
+    }
+  });
+  // grouped
+  var gkeys=Object.keys(grouped);
+  gkeys.forEach(function(g){
+    h+='<div class="set-grp-lbl">'+g+'</div>';
+    grouped[g].forEach(function(c){h+=_catItemHtml(c);});
+  });
+  // ungrouped
+  if(ungrouped.length){
+    if(gkeys.length) h+='<div class="set-grp-lbl">未分組</div>';
+    ungrouped.forEach(function(c){h+=_catItemHtml(c);});
+  }
+  if(!categories.length) h+='<div style="text-align:center;padding:20px;color:var(--fg3);font-size:13px">尚無分類</div>';
+  h+='</div>';
+  // add new
+  h+='<div id="set-cat-edit-area"></div>';
+  h+='<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
+  h+='<div class="emoji-btn" id="set-cat-ico-btn" onclick="toggleSetEmojiPicker()" style="width:44px;height:42px;font-size:20px">📌</div>';
+  h+='<input type="text" id="set-cat-name" placeholder="類別名稱" style="flex:1;min-width:80px;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:10px 12px;font-family:var(--font);font-size:14px;color:var(--fg0);outline:none">';
+  h+='<select id="set-cat-grp" style="width:110px;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:10px 8px;font-family:var(--font);font-size:13px;color:var(--fg0);-webkit-appearance:none">';
+  h+=_catGrpOptions('');
+  h+='</select>';
+  h+='<button class="set-add-btn" onclick="setAddCat()">新增</button>';
+  h+='</div>';
+  h+='<div id="set-emoji-picker" class="set-emoji-picker"></div>';
+  return h;
+}
+
+function _catItemHtml(c){
+  var h='<div class="set-item" data-cid="'+c.id+'">';
+  h+='<span class="set-item-ico">'+c.icon+'</span>';
+  h+='<span class="set-item-name">'+c.name+'</span>';
+  h+='<span class="set-item-grp">'+(c.cat_group||'')+'</span>';
+  h+='<button class="set-item-up" onclick="setMoveCat('+c.id+',-1)" title="上移">▲</button>';
+  h+='<button class="set-item-dn" onclick="setMoveCat('+c.id+',1)" title="下移">▼</button>';
+  h+='<button class="set-item-edit" onclick="setEditCat('+c.id+')">✎</button>';
+  h+='<button class="set-item-del" onclick="setDelCat('+c.id+',\''+c.name.replace(/'/g,"\\'")+'\')">&times;</button>';
+  h+='</div>';
+  return h;
+}
+
+function _catGrpOptions(sel){
+  var grps={};
+  categories.forEach(function(c){if(c.cat_group)grps[c.cat_group]=1;});
+  var h='<option value="">未分組</option>';
+  Object.keys(grps).forEach(function(g){
+    h+='<option value="'+g+'"'+(g===sel?' selected':'')+'>'+g+'</option>';
+  });
+  h+='<option value="__new__">＋ 新群組</option>';
+  return h;
+}
+
+function toggleSetEmojiPicker(){
+  var pk=$('set-emoji-picker');
+  if(!pk)return;
+  if(pk.classList.contains('on')){pk.classList.remove('on');pk.innerHTML='';return;}
+  var emojis=['🍔','🚗','🏠','💊','🎮','📚','👕','✈️','💡','📱','🎬','🏋️','🎵','🐾','💼','🎁','☕','🍺','🛒','💳','🏥','🎓','💰','📌','🔧','🌟','❤️','🔒','📊','🧾','💻','🎯','🍽️','🚌','✂️','💇','🏦','📮','🎪','🌍'];
+  var h='<div class="set-emoji-grid">';
+  emojis.forEach(function(e){
+    h+='<span class="set-emoji-cell" onclick="setPickEmoji(\''+e+'\')">'+e+'</span>';
+  });
+  h+='</div>';
+  pk.innerHTML=h;
+  pk.classList.add('on');
+}
+
+function setPickEmoji(e){
+  var btn=$('set-cat-ico-btn');
+  if(btn)btn.textContent=e;
+  var pk=$('set-emoji-picker');
+  if(pk){pk.classList.remove('on');pk.innerHTML='';}
+  // if editing
+  var editIco=$('set-edit-ico-btn');
+  if(editIco&&_setEditCat)editIco.textContent=e;
+}
+
+function setAddCat(){
+  var name=($('set-cat-name')||{}).value;
+  if(!name||!name.trim()){toast('請輸入類別名稱');return;}
+  var ico=($('set-cat-ico-btn')||{}).textContent||'📌';
+  var grpSel=$('set-cat-grp');
+  var grp=grpSel?grpSel.value:'';
+  if(grp==='__new__'){
+    grp=prompt('請輸入新群組名稱');
+    if(!grp)return;
+  }
+  api('POST','/api/categories',{name:name.trim(),icon:ico,cat_group:grp}).then(function(){
+    return api('GET','/api/categories');
+  }).then(function(cats){
+    categories=cats;
+    renderSettings();
+    toast('已新增分類「'+name.trim()+'」');
+  });
+}
+
+function setMoveCat(id,dir){
+  var idx=-1;
+  categories.forEach(function(c,i){if(c.id===id)idx=i;});
+  if(idx<0)return;
+  var ni=idx+dir;
+  if(ni<0||ni>=categories.length)return;
+  var tmp=categories[idx];categories[idx]=categories[ni];categories[ni]=tmp;
+  var ids=categories.map(function(c){return c.id;});
+  api('POST','/api/categories/reorder',{ids:ids}).then(function(){
+    renderSettings();
+  });
+}
+
+function setEditCat(id){
+  _setEditCat=null;
+  categories.forEach(function(c){if(c.id===id)_setEditCat=c;});
+  if(!_setEditCat)return;
+  var area=$('set-cat-edit-area');
+  if(!area)return;
+  var c=_setEditCat;
+  var h='<div class="set-edit-box">';
+  h+='<div style="font-size:12px;color:var(--fg2);margin-bottom:8px">編輯分類</div>';
+  h+='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">';
+  h+='<div class="emoji-btn" id="set-edit-ico-btn" onclick="toggleSetEditEmoji()" style="width:44px;height:42px;font-size:20px">'+c.icon+'</div>';
+  h+='<input type="text" id="set-edit-name" value="'+c.name+'" style="flex:1;min-width:80px;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:10px 12px;font-family:var(--font);font-size:14px;color:var(--fg0);outline:none">';
+  h+='<select id="set-edit-grp" style="width:110px;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:10px 8px;font-family:var(--font);font-size:13px;color:var(--fg0);-webkit-appearance:none">';
+  h+=_catGrpOptions(c.cat_group||'');
+  h+='</select>';
+  h+='</div>';
+  h+='<div id="set-edit-emoji-picker" class="set-emoji-picker"></div>';
+  h+='<div style="display:flex;gap:8px;margin-top:10px">';
+  h+='<button class="set-add-btn" onclick="setSubmitEditCat()">儲存</button>';
+  h+='<button class="set-cancel-btn" onclick="setCancelEditCat()">取消</button>';
+  h+='</div></div>';
+  area.innerHTML=h;
+}
+
+function toggleSetEditEmoji(){
+  var pk=$('set-edit-emoji-picker');
+  if(!pk)return;
+  if(pk.classList.contains('on')){pk.classList.remove('on');pk.innerHTML='';return;}
+  var emojis=['🍔','🚗','🏠','💊','🎮','📚','👕','✈️','💡','📱','🎬','🏋️','🎵','🐾','💼','🎁','☕','🍺','🛒','💳','🏥','🎓','💰','📌','🔧','🌟','❤️','🔒','📊','🧾','💻','🎯','🍽️','🚌','✂️','💇','🏦','📮','🎪','🌍'];
+  var h='<div class="set-emoji-grid">';
+  emojis.forEach(function(e){
+    h+='<span class="set-emoji-cell" onclick="setPickEditEmoji(\''+e+'\')">'+e+'</span>';
+  });
+  h+='</div>';
+  pk.innerHTML=h;
+  pk.classList.add('on');
+}
+
+function setPickEditEmoji(e){
+  var btn=$('set-edit-ico-btn');
+  if(btn)btn.textContent=e;
+  var pk=$('set-edit-emoji-picker');
+  if(pk){pk.classList.remove('on');pk.innerHTML='';}
+}
+
+function setSubmitEditCat(){
+  if(!_setEditCat)return;
+  var name=($('set-edit-name')||{}).value;
+  if(!name||!name.trim()){toast('請輸入類別名稱');return;}
+  var ico=($('set-edit-ico-btn')||{}).textContent||'📌';
+  var grpSel=$('set-edit-grp');
+  var grp=grpSel?grpSel.value:'';
+  if(grp==='__new__'){
+    grp=prompt('請輸入新群組名稱');
+    if(!grp){grp='';};
+  }
+  api('PUT','/api/categories/'+_setEditCat.id,{name:name.trim(),icon:ico,cat_group:grp}).then(function(){
+    return api('GET','/api/categories');
+  }).then(function(cats){
+    categories=cats;
+    _setEditCat=null;
+    renderSettings();
+    toast('已更新分類');
+  });
+}
+
+function setCancelEditCat(){
+  _setEditCat=null;
+  var area=$('set-cat-edit-area');
+  if(area)area.innerHTML='';
+}
+
+function setDelCat(id,name){
+  if(!confirm('確定刪除分類「'+name+'」？\n已使用此分類的交易不會被刪除。'))return;
+  api('DELETE','/api/categories/'+id).then(function(){
+    return api('GET','/api/categories');
+  }).then(function(cats){
+    categories=cats;
+    renderSettings();
+    toast('已刪除分類「'+name+'」');
+  });
+}
+
+// ── Budget Settings ──
+function _loadBudgetMode(){
+  var mode=localStorage.getItem('ft_budget_mode_'+st.userId)||'category';
+  var sel=$('set-budget-mode');
+  if(sel)sel.value=mode;
+  _renderBudgetFields(mode);
+}
+
+function _renderBudgetContent(){
+  var mode=localStorage.getItem('ft_budget_mode_'+st.userId)||'category';
+  var h='<div class="field" style="margin-bottom:12px"><label>預算模式</label>';
+  h+='<select id="set-budget-mode" onchange="onBudgetModeChange(this.value)" style="width:100%;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:10px 12px;font-family:var(--font);font-size:14px;color:var(--fg0);-webkit-appearance:none">';
+  h+='<option value="category"'+(mode==='category'?' selected':'')+'>依分類</option>';
+  h+='<option value="total"'+(mode==='total'?' selected':'')+'>總預算</option>';
+  h+='<option value="both"'+(mode==='both'?' selected':'')+'>兩者</option>';
+  h+='</select></div>';
+  h+='<div id="set-budget-fields"></div>';
+  h+='<button class="set-add-btn" style="margin-top:10px" onclick="saveBudgets()">儲存預算</button>';
+  return h;
+}
+
+function onBudgetModeChange(mode){
+  localStorage.setItem('ft_budget_mode_'+st.userId,mode);
+  _renderBudgetFields(mode);
+}
+
+function _renderBudgetFields(mode){
+  var area=$('set-budget-fields');
+  if(!area)return;
+  // load from localStorage
+  var stored=JSON.parse(localStorage.getItem('ft_budgets_'+st.userId)||'{}');
+  var h='';
+  if(mode==='total'||mode==='both'){
+    h+='<div class="field"><label>每月總預算</label>';
+    h+='<input type="number" id="set-budget-total" placeholder="0" value="'+(stored._total||'')+'" style="font-family:var(--mono)">';
+    h+='</div>';
+  }
+  if(mode==='category'||mode==='both'){
+    h+='<div style="font-size:12px;color:var(--fg2);margin-bottom:8px">各分類月預算</div>';
+    categories.forEach(function(c){
+      h+='<div class="set-budget-row">';
+      h+='<span class="set-budget-ico">'+c.icon+'</span>';
+      h+='<span class="set-budget-name">'+c.name+'</span>';
+      h+='<input type="number" class="set-budget-input" data-cat-id="'+c.id+'" placeholder="0" value="'+(stored['c_'+c.id]||'')+'">';
+      h+='</div>';
+    });
+  }
+  area.innerHTML=h;
+}
+
+function saveBudgets(){
+  var mode=localStorage.getItem('ft_budget_mode_'+st.userId)||'category';
+  var obj={};
+  if(mode==='total'||mode==='both'){
+    var totalInput=$('set-budget-total');
+    if(totalInput)obj._total=parseFloat(totalInput.value)||0;
+  }
+  if(mode==='category'||mode==='both'){
+    var inputs=document.querySelectorAll('.set-budget-input');
+    for(var i=0;i<inputs.length;i++){
+      var cid=inputs[i].getAttribute('data-cat-id');
+      var val=parseFloat(inputs[i].value)||0;
+      if(val)obj['c_'+cid]=val;
+    }
+  }
+  localStorage.setItem('ft_budgets_'+st.userId,JSON.stringify(obj));
+  toast('預算已儲存');
+}
+
+// ── Recurring Transactions ──
+function _loadRecurMode(){
+  var mode=localStorage.getItem('ft_recurring_mode_'+st.userId)||'auto';
+  var sel=$('set-recur-mode');
+  if(sel)sel.value=mode;
+  _loadRecurItems();
+}
+
+function _renderRecurContent(){
+  var mode=localStorage.getItem('ft_recurring_mode_'+st.userId)||'auto';
+  var h='<div class="field" style="margin-bottom:12px"><label>定期模式</label>';
+  h+='<select id="set-recur-mode" onchange="onRecurModeChange(this.value)" style="width:100%;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:10px 12px;font-family:var(--font);font-size:14px;color:var(--fg0);-webkit-appearance:none">';
+  h+='<option value="auto"'+(mode==='auto'?' selected':'')+'>自動記錄</option>';
+  h+='<option value="checklist"'+(mode==='checklist'?' selected':'')+'>月初清單</option>';
+  h+='<option value="reminder"'+(mode==='reminder'?' selected':'')+'>到期提醒</option>';
+  h+='</select></div>';
+  h+='<div id="set-recur-list"></div>';
+  h+='<div id="set-recur-form" style="margin-top:12px"></div>';
+  h+='<button class="set-add-btn" style="margin-top:10px" onclick="showRecurForm()">＋ 新增定期交易</button>';
+  return h;
+}
+
+function onRecurModeChange(mode){
+  localStorage.setItem('ft_recurring_mode_'+st.userId,mode);
+}
+
+function _loadRecurItems(){
+  _recurItems=JSON.parse(localStorage.getItem('ft_recur_items_'+st.userId)||'[]');
+  _renderRecurList();
+}
+
+function _renderRecurList(){
+  var area=$('set-recur-list');
+  if(!area)return;
+  if(!_recurItems.length){
+    area.innerHTML='<div style="text-align:center;padding:16px;color:var(--fg3);font-size:13px">尚無定期交易</div>';
+    return;
+  }
+  var h='';
+  _recurItems.forEach(function(it,i){
+    var catName='';
+    categories.forEach(function(c){if(String(c.id)===String(it.cat_id))catName=c.icon+' '+c.name;});
+    var acctName='';
+    allAccounts.forEach(function(a){if(String(a.id)===String(it.acct_id))acctName=a.name;});
+    h+='<div class="set-recur-item">';
+    h+='<div class="set-recur-info">';
+    h+='<div class="set-recur-name">'+it.name+'</div>';
+    h+='<div class="set-recur-meta">每月 '+it.day+' 日 · '+(catName||'無分類')+' · '+(acctName||'無帳戶')+' · '+fmtN(it.amount)+'</div>';
+    h+='</div>';
+    h+='<button class="set-item-edit" onclick="editRecurItem('+i+')">✎</button>';
+    h+='<button class="set-item-del" onclick="delRecurItem('+i+')">&times;</button>';
+    h+='</div>';
+  });
+  area.innerHTML=h;
+}
+
+function showRecurForm(idx){
+  var area=$('set-recur-form');
+  if(!area)return;
+  var it=(idx!==undefined)?_recurItems[idx]:{name:'',amount:0,cat_id:'',day:1,acct_id:''};
+  var isEdit=(idx!==undefined);
+  var h='<div class="set-edit-box">';
+  h+='<div style="font-size:12px;color:var(--fg2);margin-bottom:8px">'+(isEdit?'編輯':'新增')+'定期交易</div>';
+  h+='<div class="field"><label>名稱</label><input type="text" id="set-recur-name" value="'+(it.name||'')+'" placeholder="如：房租、水電費"></div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+  h+='<div class="field"><label>金額</label><input type="number" id="set-recur-amt" value="'+(it.amount||'')+'" placeholder="0"></div>';
+  h+='<div class="field"><label>每月日期</label><input type="number" id="set-recur-day" value="'+(it.day||1)+'" min="1" max="28" placeholder="1"></div>';
+  h+='</div>';
+  h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+  h+='<div class="field"><label>分類</label><select id="set-recur-cat" style="width:100%;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:10px 8px;font-family:var(--font);font-size:13px;color:var(--fg0);-webkit-appearance:none">';
+  h+='<option value="">無</option>';
+  categories.forEach(function(c){
+    h+='<option value="'+c.id+'"'+(String(c.id)===String(it.cat_id)?' selected':'')+'>'+c.icon+' '+c.name+'</option>';
+  });
+  h+='</select></div>';
+  h+='<div class="field"><label>帳戶</label><select id="set-recur-acct" style="width:100%;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:10px 8px;font-family:var(--font);font-size:13px;color:var(--fg0);-webkit-appearance:none">';
+  h+='<option value="">無</option>';
+  allAccounts.forEach(function(a){
+    h+='<option value="'+a.id+'"'+(String(a.id)===String(it.acct_id)?' selected':'')+'>'+a.name+'</option>';
+  });
+  h+='</select></div>';
+  h+='</div>';
+  h+='<div style="display:flex;gap:8px;margin-top:8px">';
+  h+='<button class="set-add-btn" onclick="submitRecurForm('+(isEdit?idx:'')+')">'+(isEdit?'儲存':'新增')+'</button>';
+  h+='<button class="set-cancel-btn" onclick="hideRecurForm()">取消</button>';
+  h+='</div></div>';
+  area.innerHTML=h;
+}
+
+function hideRecurForm(){
+  var area=$('set-recur-form');
+  if(area)area.innerHTML='';
+}
+
+function editRecurItem(idx){
+  showRecurForm(idx);
+}
+
+function submitRecurForm(idx){
+  var name=($('set-recur-name')||{}).value;
+  if(!name||!name.trim()){toast('請輸入名稱');return;}
+  var item={
+    name:name.trim(),
+    amount:parseFloat(($('set-recur-amt')||{}).value)||0,
+    day:parseInt(($('set-recur-day')||{}).value)||1,
+    cat_id:($('set-recur-cat')||{}).value||'',
+    acct_id:($('set-recur-acct')||{}).value||''
+  };
+  if(idx!==undefined&&idx!==''){
+    _recurItems[idx]=item;
+  } else {
+    _recurItems.push(item);
+  }
+  localStorage.setItem('ft_recur_items_'+st.userId,JSON.stringify(_recurItems));
+  hideRecurForm();
+  _renderRecurList();
+  toast(idx!==undefined&&idx!==''?'已更新定期交易':'已新增定期交易');
+}
+
+function delRecurItem(idx){
+  if(!confirm('確定刪除「'+_recurItems[idx].name+'」？'))return;
+  _recurItems.splice(idx,1);
+  localStorage.setItem('ft_recur_items_'+st.userId,JSON.stringify(_recurItems));
+  _renderRecurList();
+  toast('已刪除定期交易');
 }
 
 // ── PWA: Service Worker registration ──

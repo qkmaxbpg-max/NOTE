@@ -90,6 +90,30 @@ CREATE TABLE retirement_years (
     UNIQUE(user_id, year)
 );
 
+-- Budgets table (per-category or total monthly budgets)
+CREATE TABLE budgets (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category_id BIGINT REFERENCES categories(id) ON DELETE CASCADE,
+    amount      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    budget_type TEXT NOT NULL DEFAULT 'category' CHECK(budget_type IN ('category','total')),
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, category_id, budget_type)
+);
+
+-- Recurring transactions table
+CREATE TABLE recurring_transactions (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name        TEXT NOT NULL,
+    amount      DOUBLE PRECISION NOT NULL DEFAULT 0,
+    category_id BIGINT REFERENCES categories(id) ON DELETE SET NULL,
+    account_id  BIGINT REFERENCES accounts(id) ON DELETE SET NULL,
+    day_of_month INTEGER NOT NULL DEFAULT 1 CHECK(day_of_month BETWEEN 1 AND 28),
+    is_active   BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- ============================================================
 -- INDEXES
 -- ============================================================
@@ -102,6 +126,8 @@ CREATE INDEX idx_groups_user_id ON groups(user_id);
 CREATE INDEX idx_categories_user_id ON categories(user_id);
 CREATE INDEX idx_retirement_config_user_id ON retirement_config(user_id);
 CREATE INDEX idx_retirement_years_user_id ON retirement_years(user_id);
+CREATE INDEX idx_budgets_user_id ON budgets(user_id);
+CREATE INDEX idx_recurring_transactions_user_id ON recurring_transactions(user_id);
 
 -- ============================================================
 -- ROW LEVEL SECURITY
@@ -114,6 +140,8 @@ ALTER TABLE groups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE retirement_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE retirement_years ENABLE ROW LEVEL SECURITY;
+ALTER TABLE budgets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE recurring_transactions ENABLE ROW LEVEL SECURITY;
 
 -- Permissive policies allowing all operations for anon role
 -- (personal app, single user, no multi-tenancy)
@@ -137,6 +165,12 @@ CREATE POLICY "Allow all access for anon" ON retirement_config
     FOR ALL TO anon USING (true) WITH CHECK (true);
 
 CREATE POLICY "Allow all access for anon" ON retirement_years
+    FOR ALL TO anon USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access for anon" ON budgets
+    FOR ALL TO anon USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access for anon" ON recurring_transactions
     FOR ALL TO anon USING (true) WITH CHECK (true);
 
 -- ============================================================
