@@ -8,9 +8,15 @@ var _authMode='login'; // 'login' or 'signup'
 
 function togglePassVis(){
   var inp=$('auth-pass');
-  var btn=$('auth-eye-btn');
-  if(inp.type==='password'){inp.type='text';btn.textContent='🙈';}
-  else{inp.type='password';btn.textContent='👁';}
+  if(inp.type==='password'){
+    inp.type='text';
+    $('eye-show').style.display='none';
+    $('eye-hide').style.display='';
+  } else {
+    inp.type='password';
+    $('eye-show').style.display='';
+    $('eye-hide').style.display='none';
+  }
 }
 
 function authInit(){

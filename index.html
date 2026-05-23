@@ -15,7 +15,7 @@
 <!-- PWA: common -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=31">
+<link rel="stylesheet" href="style.css?v=32">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -25,7 +25,7 @@
     <div class="auth-logo">fin<span>.</span>track</div>
     <div class="auth-subtitle">登入以繼續</div>
     <div class="field"><label>Email</label><input type="email" id="auth-email" placeholder="you@example.com" autocomplete="email"></div>
-    <div class="field"><label>密碼</label><div class="auth-pass-wrap"><input type="password" id="auth-pass" placeholder="••••••••" autocomplete="current-password"><button type="button" class="auth-eye" onclick="togglePassVis()" id="auth-eye-btn">👁</button></div></div>
+    <div class="field"><label>密碼</label><div class="auth-pass-wrap"><input type="password" id="auth-pass" placeholder="••••••••" autocomplete="current-password"><button type="button" class="auth-eye" onclick="togglePassVis()" id="auth-eye-btn"><svg id="eye-show" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg><svg id="eye-hide" style="display:none" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 01-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg></button></div></div>
     <div id="auth-err" style="color:var(--red);font-size:12px;min-height:18px;margin-bottom:8px"></div>
     <button class="auth-btn" id="auth-login-btn" onclick="authLogin()">登入</button>
     <div class="auth-switch">還沒有帳號？<a href="#" onclick="authToggleMode(event)">註冊</a></div>
@@ -939,6 +939,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=31"></script>
+<script src="app.js?v=32"></script>
 </body>
 </html>
