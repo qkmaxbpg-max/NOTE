@@ -6,6 +6,13 @@ var sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON);
 // ── Auth ──
 var _authMode='login'; // 'login' or 'signup'
 
+function togglePassVis(){
+  var inp=$('auth-pass');
+  var btn=$('auth-eye-btn');
+  if(inp.type==='password'){inp.type='text';btn.textContent='🙈';}
+  else{inp.type='password';btn.textContent='👁';}
+}
+
 function authInit(){
   sb.auth.getSession().then(function(res){
     if(res.data.session){
