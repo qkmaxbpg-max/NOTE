@@ -3,6 +3,112 @@ var SUPABASE_URL='https://hpajiexvcmkidbgreaqy.supabase.co';
 var SUPABASE_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwYWppZXh2Y21raWRiZ3JlYXF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwMTY2NTQsImV4cCI6MjA5NDU5MjY1NH0.ZIxx-cJRHxLAv-TlPpjvFGBndzs-GE9ptZENh81AQQQ';
 var sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON);
 
+// ── Auth ──
+var _authMode='login'; // 'login' or 'signup'
+
+function authInit(){
+  sb.auth.getSession().then(function(res){
+    if(res.data.session){
+      authHide();
+      claimOrphanUsers().then(function(){appInit();});
+    } else {
+      authShow();
+    }
+  });
+  sb.auth.onAuthStateChange(function(event){
+    if(event==='SIGNED_OUT'){
+      authShow();
+    }
+  });
+}
+
+function authShow(){
+  var el=$('authOverlay');
+  if(el){el.classList.remove('hidden');el.style.display='flex';}
+}
+
+function authHide(){
+  var el=$('authOverlay');
+  if(el){el.classList.add('hidden');setTimeout(function(){el.style.display='none';},300);}
+}
+
+function authToggleMode(e){
+  if(e)e.preventDefault();
+  _authMode=_authMode==='login'?'signup':'login';
+  $('auth-login-btn').textContent=_authMode==='login'?'登入':'註冊';
+  var sw=$('authOverlay').querySelector('.auth-switch');
+  if(_authMode==='login'){
+    sw.innerHTML='還沒有帳號？<a href="#" onclick="authToggleMode(event)">註冊</a>';
+  } else {
+    sw.innerHTML='已有帳號？<a href="#" onclick="authToggleMode(event)">登入</a>';
+  }
+  $('auth-err').textContent='';
+}
+
+function authLogin(){
+  var email=$('auth-email').value.trim();
+  var pass=$('auth-pass').value;
+  if(!email||!pass){$('auth-err').textContent='請輸入 Email 和密碼';return;}
+  $('auth-login-btn').disabled=true;
+  $('auth-err').textContent='';
+
+  if(_authMode==='signup'){
+    // check allowed emails first
+    sb.from('allowed_emails').select('email').eq('email',email.toLowerCase()).then(function(chk){
+      if(!chk.data||chk.data.length===0){
+        $('auth-login-btn').disabled=false;
+        $('auth-err').textContent='此 Email 未獲授權註冊，請聯繫管理員';
+        return;
+      }
+      doAuth(email,pass);
+    });
+  } else {
+    doAuth(email,pass);
+  }
+}
+
+function doAuth(email,pass){
+  var fn=_authMode==='login'
+    ?sb.auth.signInWithPassword({email:email,password:pass})
+    :sb.auth.signUp({email:email,password:pass});
+
+  fn.then(function(res){
+    $('auth-login-btn').disabled=false;
+    if(res.error){
+      var msg=res.error.message;
+      if(msg.indexOf('Invalid login')!==-1)msg='Email 或密碼錯誤';
+      else if(msg.indexOf('already registered')!==-1)msg='此 Email 已註冊';
+      else if(msg.indexOf('Password should')!==-1)msg='密碼至少需要 6 個字元';
+      else if(msg.indexOf('valid email')!==-1)msg='請輸入有效的 Email';
+      $('auth-err').textContent=msg;
+      return;
+    }
+    if(_authMode==='signup'&&res.data.user&&!res.data.session){
+      $('auth-err').style.color='var(--green)';
+      $('auth-err').textContent='✓ 註冊成功！請到信箱點擊確認連結';
+      return;
+    }
+    authHide();
+    claimOrphanUsers().then(function(){appInit();});
+  });
+}
+
+// Claim users with no owner (one-time migration for existing data)
+function claimOrphanUsers(){
+  return sb.auth.getUser().then(function(res){
+    if(!res.data.user)return;
+    var uid=res.data.user.id;
+    return sb.from('users').update({owner_auth_id:uid}).is('owner_auth_id',null).then(function(){});
+  });
+}
+
+function authLogout(){
+  if(!confirm('確定要登出嗎？'))return;
+  sb.auth.signOut().then(function(){
+    location.reload();
+  });
+}
+
 var MONTHS=['01','02','03','04','05','06','07','08','09','10','11','12'];
 var DOTS=['#1db954','#3d8ef8','#f5a623','#a78bfa','#2dd4bf','#f25c5c','#34d399','#fb923c'];
 function nextDot(items){
@@ -451,8 +557,10 @@ function submitUserEdit(){
       toast('已更新使用者');
     });
   } else {
-    // create new
-    sb.from('users').insert({name:name,avatar:avatar}).select().single().then(function(res){
+    // create new — attach to current auth user
+    sb.auth.getUser().then(function(au){
+    var authId=au.data&&au.data.user?au.data.user.id:null;
+    sb.from('users').insert({name:name,avatar:avatar,owner_auth_id:authId}).select().single().then(function(res){
       if(res.data&&res.data.id){
         var newId=res.data.id;
         if(theme) localStorage.setItem('ft_theme_'+newId,theme);
@@ -467,6 +575,7 @@ function submitUserEdit(){
       } else {
         toast('新增失敗');
       }
+    });
     });
   }
 }
@@ -4881,46 +4990,53 @@ function renderPledgeAnalysis(){
 // ── init: load from API then render ──
 // apply theme early before API returns
 (function(){var tc=localStorage.getItem('ft_theme_'+st.userId);if(tc)document.documentElement.style.setProperty('--green',tc);})();
-loadUsers().then(function(){
-  // Ensure userId points to a valid user; if not, pick the first available or create one
-  var fixUser;
-  if(st.users.length===0){
-    fixUser=sb.from('users').insert({name:'我'}).select().single().then(function(res){
-      if(res.data){
-        st.userId=res.data.id;
-        localStorage.setItem('ft_uid',res.data.id);
-        st.users=[res.data];
+function appInit(){
+  loadUsers().then(function(){
+    var fixUser;
+    if(st.users.length===0){
+      // New user — create default profile with owner_auth_id
+      fixUser=sb.auth.getUser().then(function(au){
+        var authId=au.data&&au.data.user?au.data.user.id:null;
+        return sb.from('users').insert({name:'我',owner_auth_id:authId}).select().single().then(function(res){
+          if(res.data){
+            st.userId=res.data.id;
+            localStorage.setItem('ft_uid',res.data.id);
+            st.users=[res.data];
+            renderUserList();
+          }
+        });
+      });
+    } else {
+      var valid=st.users.find(function(u){return u.id===st.userId;});
+      if(!valid){
+        st.userId=st.users[0].id;
+        localStorage.setItem('ft_uid',st.userId);
         renderUserList();
       }
-    });
-  } else {
-    var valid=st.users.find(function(u){return u.id===st.userId;});
-    if(!valid){
-      st.userId=st.users[0].id;
-      localStorage.setItem('ft_uid',st.userId);
-      renderUserList();
+      fixUser=Promise.resolve();
     }
-    fixUser=Promise.resolve();
-  }
-  return fixUser.then(function(){
-    return loadAll();
-  }).then(function(){
-    renderOverview();
-    renderStocks();
-    renderTx();
-    renderAnalysis();
-    $('f-date').value=new Date().toISOString().slice(0,10);
-    refreshPrices(true);
-    api('POST','/api/loans/auto-pay',{}).then(function(res){
-      if(res.created&&res.created.length>0){
-        loadAll().then(function(){renderOverview();renderTx();});
-        res.created.forEach(function(c){
-          toast('已自動記錄 '+c.account+' 第'+c.period+'期還款');
-        });
-      }
+    return fixUser.then(function(){
+      return loadAll();
+    }).then(function(){
+      renderOverview();
+      renderStocks();
+      renderTx();
+      renderAnalysis();
+      $('f-date').value=new Date().toISOString().slice(0,10);
+      refreshPrices(true);
+      api('POST','/api/loans/auto-pay',{}).then(function(res){
+        if(res.created&&res.created.length>0){
+          loadAll().then(function(){renderOverview();renderTx();});
+          res.created.forEach(function(c){
+            toast('已自動記錄 '+c.account+' 第'+c.period+'期還款');
+          });
+        }
+      });
     });
   });
-});
+}
+// Start auth check
+authInit();
 
 // ── Financial Calculators ──
 var CALCS=[

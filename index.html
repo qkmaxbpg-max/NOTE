@@ -15,10 +15,22 @@
 <!-- PWA: common -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=28">
+<link rel="stylesheet" href="style.css?v=30">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
+<!-- Login overlay -->
+<div class="auth-overlay" id="authOverlay">
+  <div class="auth-card">
+    <div class="auth-logo">fin<span>.</span>track</div>
+    <div class="auth-subtitle">登入以繼續</div>
+    <div class="field"><label>Email</label><input type="email" id="auth-email" placeholder="you@example.com" autocomplete="email"></div>
+    <div class="field"><label>密碼</label><input type="password" id="auth-pass" placeholder="••••••••" autocomplete="current-password"></div>
+    <div id="auth-err" style="color:var(--red);font-size:12px;min-height:18px;margin-bottom:8px"></div>
+    <button class="auth-btn" id="auth-login-btn" onclick="authLogin()">登入</button>
+    <div class="auth-switch">還沒有帳號？<a href="#" onclick="authToggleMode(event)">註冊</a></div>
+  </div>
+</div>
 <div class="sidenav-back" id="sidenavBack" onclick="toggleSideNav()"></div>
 <div class="sidenav" id="sidenav">
   <div class="sidenav-head">fin<span>.</span>track</div>
@@ -51,6 +63,10 @@
   <div class="sidenav-item sidenav-add-user" onclick="openAddUser()">
     <svg viewBox="0 0 20 20" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><circle cx="10" cy="7" r="3"/><path d="M3 17c0-3.3 3.1-6 7-6s7 2.7 7 6"/><line x1="16" y1="3" x2="16" y2="9"/><line x1="13" y1="6" x2="19" y2="6"/></svg>
     <span>新增使用者</span>
+  </div>
+  <div class="sidenav-item sidenav-logout" onclick="authLogout()">
+    <svg viewBox="0 0 20 20" style="width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round"><path d="M7 17H4a1 1 0 01-1-1V4a1 1 0 011-1h3"/><polyline points="11 15 15 10 11 5"/><line x1="15" y1="10" x2="7" y2="10"/></svg>
+    <span>登出</span>
   </div>
 </div>
 <div class="shell">
@@ -923,6 +939,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=28"></script>
+<script src="app.js?v=30"></script>
 </body>
 </html>
