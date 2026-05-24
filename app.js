@@ -20,17 +20,43 @@ function togglePassVis(){
 }
 
 function authInit(){
-  sb.auth.getSession().then(function(res){
-    if(res.data.session){
+  // Feature 3: Handle Supabase email confirmation redirect tokens
+  // Supabase JS v2 automatically detects hash fragments (#access_token=...)
+  // and establishes a session. We use onAuthStateChange to catch this.
+  var _authHandled=false;
+  sb.auth.onAuthStateChange(function(event,session){
+    if(event==='SIGNED_IN'&&session&&!_authHandled){
+      _authHandled=true;
+      // Clean up URL hash if present (from email confirmation redirect)
+      if(window.location.hash&&window.location.hash.indexOf('access_token')!==-1){
+        history.replaceState(null,'',window.location.pathname+window.location.search);
+      }
       authHide();
       claimOrphanUsers().then(function(){appInit();});
-    } else {
+    }
+    if(event==='SIGNED_OUT'){
+      _authHandled=false;
       authShow();
     }
   });
-  sb.auth.onAuthStateChange(function(event){
-    if(event==='SIGNED_OUT'){
-      authShow();
+  sb.auth.getSession().then(function(res){
+    if(res.data.session){
+      if(!_authHandled){
+        _authHandled=true;
+        authHide();
+        claimOrphanUsers().then(function(){appInit();});
+      }
+    } else {
+      // Check if URL has auth tokens that Supabase hasn't processed yet
+      var h=window.location.hash||'';
+      if(h.indexOf('access_token')!==-1||h.indexOf('type=signup')!==-1){
+        // Supabase will pick these up via onAuthStateChange; wait briefly
+        setTimeout(function(){
+          if(!_authHandled) authShow();
+        },3000);
+      } else {
+        authShow();
+      }
     }
   });
 }
@@ -1032,6 +1058,40 @@ function calcNetWorth(){
   });
   return total;
 }
+
+// ── Feature 1: Net Worth Snapshot ──
+function calcNetWorthBreakdown(){
+  var bd={liquid:0,invest:0,fixed:0,recv:0,debt:0};
+  ['liquid','invest','fixed','recv','debt'].forEach(function(k){
+    data[k].items.forEach(function(it){
+      if(it.stat) bd[k]+=acctVal(it);
+    });
+  });
+  return bd;
+}
+
+function upsertNetWorthSnapshot(){
+  if(!st.userId) return Promise.resolve();
+  var month=new Date().toISOString().slice(0,7);
+  var bd=calcNetWorthBreakdown();
+  var nw=bd.liquid+bd.invest+bd.fixed+bd.recv+bd.debt;
+  return sb.from('net_worth_snapshots').upsert({
+    user_id:st.userId,
+    month:month,
+    net_worth:nw,
+    breakdown:bd
+  },{onConflict:'user_id,month'}).then(function(res){
+    if(res.error) console.error('Snapshot upsert error:',res.error);
+  });
+}
+
+function loadNetWorthSnapshots(){
+  if(!st.userId) return Promise.resolve([]);
+  return sb.from('net_worth_snapshots').select('*').eq('user_id',st.userId).order('month').then(function(res){
+    return res.data||[];
+  });
+}
+
 function updateHero(){
   var nw=calcNetWorth();
   $('heroNum').textContent=st.masked?'••••••':fmtAmt(cvt(nw));
@@ -4022,27 +4082,27 @@ function renderChart(period){
   if(period) chartPeriod=period;
   var nw=calcNetWorth();
   var today=new Date().toISOString().slice(0,10);
-  api('GET','/api/transactions').then(function(allTxs){
-    var nonTrans=allTxs.filter(function(t){return t.category!=='轉帳';});
-    var pts=[],labels=[];
 
-    if(chartPeriod==='月'){
-      // 目前月份的每日淨資產
+  if(chartPeriod==='月'){
+    // 目前月份每日淨資產 — 用交易倒推
+    api('GET','/api/transactions').then(function(allTxs){
+      var nonTrans=allTxs.filter(function(t){return t.category!=='轉帳';});
+      var pts=[],labels=[];
       var prefix=today.slice(0,7);
       var yr=parseInt(prefix),mo=parseInt(prefix.slice(5,7))-1;
       var dim=new Date(yr,mo+1,0).getDate();
       for(var d=1;d<=dim;d++){
         var ds=prefix+'-'+String(d).padStart(2,'0');
         if(ds>today) break;
-        // 從當前淨資產倒推：該日後的所有交易加回去即為當日淨資產
         var subtract=nonTrans.filter(function(t){return t.date>ds;}).reduce(function(s,t){return s+t.amount;},0);
         pts.push(nw-subtract);
         labels.push(String(d)+'日');
       }
-    } else {
-      // 各月份的月末淨資產
-      var allMs=nonTrans.map(function(t){return t.date.slice(0,7);}).sort();
-      var firstM=allMs.length?allMs[0]:today.slice(0,7);
+      _drawChart(pts,labels);
+    });
+  } else {
+    // 多月視圖 — 優先使用 Supabase 快照，回退到交易倒推
+    loadNetWorthSnapshots().then(function(snapshots){
       var todayM=today.slice(0,7);
       var startM;
       if(chartPeriod==='季'){
@@ -4051,19 +4111,53 @@ function renderChart(period){
       } else if(chartPeriod==='年'){
         startM=today.slice(0,4)+'-01';
       } else { // 全
-        startM=firstM;
+        startM=snapshots.length?snapshots[0].month:todayM;
       }
+
+      // Build snapshot map
+      var snapMap={};
+      snapshots.forEach(function(s){snapMap[s.month]=s.net_worth;});
+      // Ensure current month is up-to-date with live data
+      snapMap[todayM]=nw;
+
+      var pts=[],labels=[];
       var cur=new Date(startM+'-01'),end=new Date(todayM+'-01');
       while(cur<=end){
         var m=cur.toISOString().slice(0,7);
-        var sub=nonTrans.filter(function(t){return t.date.slice(0,7)>m;}).reduce(function(s,t){return s+t.amount;},0);
-        pts.push(nw-sub);
-        labels.push(m.slice(5,7)+'月');
+        if(snapMap.hasOwnProperty(m)){
+          pts.push(snapMap[m]);
+          labels.push(m.slice(5,7)+'月');
+        }
         cur.setMonth(cur.getMonth()+1);
       }
-    }
-    _drawChart(pts,labels);
-  });
+
+      // If no snapshot data except current month, fallback to transaction-based
+      if(pts.length<=1){
+        api('GET','/api/transactions').then(function(allTxs){
+          var nonTrans=allTxs.filter(function(t){return t.category!=='轉帳';});
+          var allMs=nonTrans.map(function(t){return t.date.slice(0,7);}).sort();
+          var firstM=allMs.length?allMs[0]:todayM;
+          if(chartPeriod==='全'&&firstM<startM) startM=firstM;
+          var pts2=[],labels2=[];
+          var cur2=new Date(startM+'-01'),end2=new Date(todayM+'-01');
+          while(cur2<=end2){
+            var m2=cur2.toISOString().slice(0,7);
+            if(snapMap.hasOwnProperty(m2)){
+              pts2.push(snapMap[m2]);
+            } else {
+              var sub=nonTrans.filter(function(t){return t.date.slice(0,7)>m2;}).reduce(function(s,t){return s+t.amount;},0);
+              pts2.push(nw-sub);
+            }
+            labels2.push(m2.slice(5,7)+'月');
+            cur2.setMonth(cur2.getMonth()+1);
+          }
+          _drawChart(pts2,labels2);
+        });
+      } else {
+        _drawChart(pts,labels);
+      }
+    });
+  }
 }
 
 function _drawChart(pts,labels,svgId,axId,ttlId){
@@ -5051,6 +5145,8 @@ function appInit(){
       renderAnalysis();
       $('f-date').value=new Date().toISOString().slice(0,10);
       refreshPrices(true);
+      // Feature 1: Auto-snapshot net worth for current month
+      upsertNetWorthSnapshot();
       api('POST','/api/loans/auto-pay',{}).then(function(res){
         if(res.created&&res.created.length>0){
           loadAll().then(function(){renderOverview();renderTx();});
@@ -6071,7 +6167,7 @@ function renderRetireChart(){
 }
 
 // ── Settings Page ──
-var _setOpen={cat:true,budget:false,recurring:false};
+var _setOpen={cat:true,budget:false,recurring:false,backup:false};
 var _setEditCat=null; // category being edited
 var _budgets=[];
 var _recurItems=[];
@@ -6086,6 +6182,8 @@ function renderSettings(){
   html+=_renderSetSection('budget','💰','預算設定',_renderBudgetContent());
   // Section 3: 定期交易
   html+=_renderSetSection('recurring','🔄','定期交易',_renderRecurContent());
+  // Section 4: 備份與還原
+  html+=_renderSetSection('backup','💾','備份與還原',_renderBackupContent());
   el.innerHTML=html;
   // load budgets from localStorage
   _loadBudgetMode();
@@ -6514,6 +6612,124 @@ function delRecurItem(idx){
   localStorage.setItem('ft_recur_items_'+st.userId,JSON.stringify(_recurItems));
   _renderRecurList();
   toast('已刪除定期交易');
+}
+
+// ══════════════════════════════════════════════════════
+// ── Feature: Backup & Restore ──
+// ══════════════════════════════════════════════════════
+
+function _renderBackupContent(){
+  var h='<div style="display:flex;flex-direction:column;gap:12px">';
+  h+='<div style="font-size:13px;color:var(--fg2)">匯出所有資料為 JSON 檔案，或從備份檔還原資料。</div>';
+  h+='<div style="display:flex;gap:10px;flex-wrap:wrap">';
+  h+='<button class="set-add-btn" onclick="backupExport()" style="flex:1;min-width:120px">匯出備份</button>';
+  h+='<button class="set-add-btn" onclick="document.getElementById(\'backup-file-input\').click()" style="flex:1;min-width:120px;background:var(--bg3);color:var(--fg0)">匯入備份</button>';
+  h+='</div>';
+  h+='<input type="file" id="backup-file-input" accept=".json" style="display:none" onchange="backupImport(this)">';
+  h+='<div id="backup-status" style="font-size:12px;color:var(--fg3)"></div>';
+  h+='</div>';
+  return h;
+}
+
+function backupExport(){
+  var status=$('backup-status');
+  if(status) status.textContent='正在匯出...';
+  var tables=['users','accounts','transactions','categories','groups','retirement_config','retirement_years','budgets','recurring_transactions','net_worth_snapshots'];
+  var backup={version:1,exported_at:new Date().toISOString(),user_id:st.userId,data:{}};
+  var promises=tables.map(function(t){
+    return sb.from(t).select('*').eq('user_id',st.userId).then(function(res){
+      backup.data[t]=res.data||[];
+    });
+  });
+  // users table uses 'id' not 'user_id'
+  promises[0]=sb.from('users').select('*').eq('id',st.userId).then(function(res){
+    backup.data.users=res.data||[];
+  });
+  Promise.all(promises).then(function(){
+    var json=JSON.stringify(backup,null,2);
+    var blob=new Blob([json],{type:'application/json'});
+    var today=new Date().toISOString().slice(0,10);
+    _downloadBlob(blob,'fintrack-backup-'+today+'.json');
+    if(status) status.textContent='備份已匯出！';
+    toast('備份已匯出');
+  });
+}
+
+function backupImport(input){
+  if(!input.files||!input.files[0]) return;
+  var file=input.files[0];
+  var reader=new FileReader();
+  reader.onload=function(e){
+    try{
+      var backup=JSON.parse(e.target.result);
+      if(!backup.data||!backup.data.users){
+        toast('備份檔格式無效');return;
+      }
+      if(!confirm('確定要還原備份嗎？這將清除目前所有資料並以備份內容取代。')){
+        input.value='';return;
+      }
+      _doRestore(backup);
+    }catch(err){
+      toast('無法讀取備份檔：'+err.message);
+    }
+    input.value='';
+  };
+  reader.readAsText(file);
+}
+
+function _doRestore(backup){
+  var status=$('backup-status');
+  if(status) status.textContent='正在還原...';
+  var uid=st.userId;
+  // Order matters: delete child tables first
+  var delTables=['net_worth_snapshots','recurring_transactions','budgets','retirement_years','retirement_config','transactions','groups','categories','accounts'];
+  var delChain=Promise.resolve();
+  delTables.forEach(function(t){
+    delChain=delChain.then(function(){
+      return sb.from(t).delete().eq('user_id',uid);
+    });
+  });
+  delChain.then(function(){
+    // Update user record
+    var u=backup.data.users&&backup.data.users[0];
+    if(u){
+      return sb.from('users').update({name:u.name,avatar:u.avatar}).eq('id',uid);
+    }
+  }).then(function(){
+    // Insert data in order: accounts first, then rest
+    var insertTables=['accounts','categories','groups','transactions','retirement_config','retirement_years','budgets','recurring_transactions','net_worth_snapshots'];
+    var chain=Promise.resolve();
+    insertTables.forEach(function(t){
+      chain=chain.then(function(){
+        var rows=backup.data[t];
+        if(!rows||!rows.length) return;
+        // Remap user_id and strip id (let DB generate)
+        var mapped=rows.map(function(r){
+          var copy={};
+          Object.keys(r).forEach(function(k){
+            if(k==='id') return; // skip auto-generated id
+            copy[k]=r[k];
+          });
+          copy.user_id=uid;
+          return copy;
+        });
+        return sb.from(t).insert(mapped).then(function(res){
+          if(res.error) console.error('Restore insert error ('+t+'):',res.error);
+        });
+      });
+    });
+    return chain;
+  }).then(function(){
+    if(status) status.textContent='還原完成！重新載入中...';
+    toast('備份已還原');
+    setTimeout(function(){
+      loadAll().then(function(){
+        renderOverview();renderStocks();renderTx();renderAnalysis();renderSettings();
+        upsertNetWorthSnapshot();
+        toast('資料已重新載入');
+      });
+    },500);
+  });
 }
 
 // ══════════════════════════════════════════════════════

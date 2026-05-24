@@ -114,12 +114,24 @@ CREATE TABLE recurring_transactions (
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Net worth snapshots (monthly)
+CREATE TABLE net_worth_snapshots (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    user_id     BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    month       TEXT NOT NULL, -- format: '2026-05'
+    net_worth   DOUBLE PRECISION NOT NULL,
+    breakdown   JSONB, -- {liquid, invest, fixed, recv, debt}
+    created_at  TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE(user_id, month)
+);
+
 -- ============================================================
 -- INDEXES
 -- ============================================================
 
 CREATE INDEX idx_accounts_user_id ON accounts(user_id);
 CREATE INDEX idx_transactions_user_id ON transactions(user_id);
+CREATE INDEX idx_net_worth_snapshots_user_id ON net_worth_snapshots(user_id);
 CREATE INDEX idx_transactions_date ON transactions(date);
 CREATE INDEX idx_transactions_account_id ON transactions(account_id);
 CREATE INDEX idx_groups_user_id ON groups(user_id);
@@ -142,6 +154,7 @@ ALTER TABLE retirement_config ENABLE ROW LEVEL SECURITY;
 ALTER TABLE retirement_years ENABLE ROW LEVEL SECURITY;
 ALTER TABLE budgets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE recurring_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE net_worth_snapshots ENABLE ROW LEVEL SECURITY;
 
 -- Permissive policies allowing all operations for anon role
 -- (personal app, single user, no multi-tenancy)
@@ -171,6 +184,9 @@ CREATE POLICY "Allow all access for anon" ON budgets
     FOR ALL TO anon USING (true) WITH CHECK (true);
 
 CREATE POLICY "Allow all access for anon" ON recurring_transactions
+    FOR ALL TO anon USING (true) WITH CHECK (true);
+
+CREATE POLICY "Allow all access for anon" ON net_worth_snapshots
     FOR ALL TO anon USING (true) WITH CHECK (true);
 
 -- ============================================================
