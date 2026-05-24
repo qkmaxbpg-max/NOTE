@@ -10,7 +10,10 @@
   --teal:#2dd4bf;--tbg:rgba(45,212,191,.12);--tbord:rgba(45,212,191,.25);
   --r:18px;--rs:11px;--font:'DM Sans',sans-serif;--mono:'DM Mono',monospace;
 }
-body{background:var(--bg0);color:var(--fg0);font-family:var(--font);font-size:15px;overscroll-behavior:none;min-height:100vh}
+body{background:var(--bg0);color:var(--fg0);font-family:var(--font);font-size:15px;overscroll-behavior:none;min-height:100vh;-webkit-user-select:none;user-select:none}
+input,textarea,select,[contenteditable]{-webkit-user-select:text;user-select:text}
+input[type="number"]{-moz-appearance:textfield}
+input[type="number"]::-webkit-inner-spin-button,input[type="number"]::-webkit-outer-spin-button{-webkit-appearance:none;margin:0}
 body.light{
   --bg0:#f0f0ed;--bg1:#fff;--bg2:#f5f5f2;--bg3:#e4e4e0;--bg4:#d0d0cc;--bg5:#b8b8b4;
   --fg0:#0a0a0c;--fg1:#1a1a20;--fg2:#4a4a56;--fg3:#888894;
