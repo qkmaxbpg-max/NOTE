@@ -476,6 +476,7 @@ function renderUserList(){
 function switchUser(uid){
   if(uid===st.userId)return;
   st.userId=uid;
+  _heroChipCache={date:null,prevNW:null,stored:false};
   localStorage.setItem('ft_uid',uid);
   loadAll().then(function(){
     renderOverview();renderStocks();renderTx();renderAnalysis();updateHero();
@@ -1097,41 +1098,61 @@ function updateHero(){
   $('heroNum').textContent=st.masked?'••••••':fmtAmt(cvt(nw));
   var cv=$('chart-ttl');
   if(cv)cv.textContent=fmtN(cvt(nw));
-  // ── 今日資產變動（與前一天淨資產比較）──
+  // ── 今日資產變動（與前一天淨資產比較，存 Supabase）──
   var heroChipEl=$('heroChip');
   if(heroChipEl){
-    var today=new Date().toISOString().slice(0,10);
-    var nwKey='fintrack_nw_'+st.userId+'_';
+    _updateHeroChip(nw,heroChipEl);
+  }
+}
+var _heroChipCache={date:null,prevNW:null,stored:false};
+function _updateHeroChip(nw,el){
+  var today=new Date().toISOString().slice(0,10);
+  // use cache to avoid repeated Supabase reads
+  if(_heroChipCache.date===today&&_heroChipCache.prevNW!==undefined){
+    _renderChipValue(nw,_heroChipCache.prevNW,el);
+    // update today's snapshot in background (always keep latest)
+    if(_heroChipCache.stored){
+      sb.from('net_worth_snapshots').update({net_worth:nw}).eq('user_id',st.userId).eq('month',today).then(function(){});
+    }
+    return;
+  }
+  // first call today: read from Supabase
+  // get yesterday (or most recent past 7 days)
+  var dates=[];
+  for(var di=1;di<=7;di++){var d=new Date();d.setDate(d.getDate()-di);dates.push(d.toISOString().slice(0,10));}
+  sb.from('net_worth_snapshots').select('month,net_worth').eq('user_id',st.userId).in('month',[today].concat(dates)).then(function(res){
+    var rows=res.data||[];
+    var todayRow=rows.find(function(r){return r.month===today;});
     var prevNW=null;
-    // always compare against yesterday (or most recent past day), never today
-    try{
-      for(var di=1;di<=7;di++){
-        var d=new Date();d.setDate(d.getDate()-di);
-        var dk=d.toISOString().slice(0,10);
-        var v=localStorage.getItem(nwKey+dk);
-        if(v){prevNW=parseFloat(v);break;}
-      }
-    }catch(e){}
-    // store today's net worth on first load of the day
-    if(!localStorage.getItem(nwKey+today)){
-      try{localStorage.setItem(nwKey+today,String(nw));}catch(e){}
-      // cleanup old entries (keep last 10 days)
-      try{
-        for(var ci=10;ci<=30;ci++){
-          var cd=new Date();cd.setDate(cd.getDate()-ci);
-          localStorage.removeItem(nwKey+cd.toISOString().slice(0,10));
-        }
-      }catch(e){}
+    // find most recent previous day
+    for(var i=0;i<dates.length;i++){
+      var row=rows.find(function(r){return r.month===dates[i];});
+      if(row){prevNW=row.net_worth;break;}
     }
-    var todayChange=prevNW!==null?(nw-prevNW):0;
-    if(todayChange===0||prevNW===null){
-      heroChipEl.className='chip up';
-      heroChipEl.textContent='▲ 0 +0.00%';
+    _heroChipCache.date=today;
+    _heroChipCache.prevNW=prevNW;
+    // upsert today's snapshot
+    if(!todayRow){
+      _heroChipCache.stored=true;
+      sb.from('net_worth_snapshots').insert({user_id:st.userId,month:today,net_worth:nw}).then(function(){});
     } else {
-      var pct=prevNW!==0?(Math.abs(todayChange)/Math.abs(prevNW)*100).toFixed(2):'0.00';
-      heroChipEl.className='chip '+(todayChange>=0?'up':'dn');
-      heroChipEl.textContent=(todayChange>=0?'▲ +':'▼ -')+fmtN(cvt(Math.abs(todayChange)))+' '+(todayChange>=0?'+':'-')+pct+'%';
+      _heroChipCache.stored=true;
+      sb.from('net_worth_snapshots').update({net_worth:nw}).eq('user_id',st.userId).eq('month',today).then(function(){});
     }
+    _renderChipValue(nw,prevNW,el);
+  }).catch(function(){
+    // fallback: show 0 change
+    el.className='chip up';el.textContent='▲ 0 +0.00%';
+  });
+}
+function _renderChipValue(nw,prevNW,el){
+  var change=prevNW!==null?(nw-prevNW):0;
+  if(change===0||prevNW===null){
+    el.className='chip up';el.textContent='▲ 0 +0.00%';
+  } else {
+    var pct=prevNW!==0?(Math.abs(change)/Math.abs(prevNW)*100).toFixed(2):'0.00';
+    el.className='chip '+(change>=0?'up':'dn');
+    el.textContent=(change>=0?'▲ +':'▼ -')+fmtN(cvt(Math.abs(change)))+' '+(change>=0?'+':'-')+pct+'%';
   }
 }
 
