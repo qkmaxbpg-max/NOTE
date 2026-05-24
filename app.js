@@ -167,6 +167,102 @@ var CCYS=[
   {code:'MYR',name:'馬幣',sym:'RM'},{code:'PHP',name:'披索',sym:'₱'}
 ];
 var _fxCache={};
+
+// ── Account Icons (Bank / E-Wallet / Broker) ──
+var ACCT_ICONS={
+  // Taiwan Banks
+  '中信':  {bg:'#002855',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">中信</text>'},
+  '國泰':  {bg:'#006847',svg:'<path d="M16 6C12 6 9 11 9 16s3 10 7 10 7-5 7-10S20 6 16 6z" fill="#fff" opacity=".9"/>'},
+  '台新':  {bg:'#00694B',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">台新</text>'},
+  '玉山':  {bg:'#006B38',svg:'<path d="M16 6l8 16H8z" fill="#fff" opacity=".85"/><path d="M16 10l5 12H11z" fill="#006B38" opacity=".4"/>'},
+  '富邦':  {bg:'#003C71',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">富邦</text>'},
+  '永豐':  {bg:'#C8102E',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">永豐</text>'},
+  '第一':  {bg:'#F7931E',svg:'<text x="50%" y="54%" font-size="14" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">1</text>'},
+  '華南':  {bg:'#00A0E9',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">華南</text>'},
+  '彰銀':  {bg:'#1B3D6D',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">彰銀</text>'},
+  '合庫':  {bg:'#0072BC',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">合庫</text>'},
+  '兆豐':  {bg:'#003087',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">兆豐</text>'},
+  '台企':  {bg:'#008C99',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">台企</text>'},
+  '土地':  {bg:'#00703C',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">土銀</text>'},
+  '土銀':  {bg:'#00703C',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">土銀</text>'},
+  '台銀':  {bg:'#1C4587',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">台銀</text>'},
+  '臺銀':  {bg:'#1C4587',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">台銀</text>'},
+  '郵局':  {bg:'#006633',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">郵局</text>'},
+  '中華郵政':{bg:'#006633',svg:'<text x="50%" y="54%" font-size="11" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">郵局</text>'},
+  '聯邦':  {bg:'#C41230',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">聯邦</text>'},
+  '遠東':  {bg:'#E31937',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">遠東</text>'},
+  '星展':  {bg:'#D32011',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">星展</text>'},
+  '渣打':  {bg:'#0E6E37',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">渣打</text>'},
+  '匯豐':  {bg:'#DB0011',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">匯豐</text>'},
+  '花旗':  {bg:'#003B70',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">花旗</text>'},
+  '凱基':  {bg:'#003DA5',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">凱基</text>'},
+  '元大':  {bg:'#1A1A6C',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">元大</text>'},
+  '日盛':  {bg:'#F58220',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">日盛</text>'},
+  '陽信':  {bg:'#F4A200',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">陽信</text>'},
+  '板信':  {bg:'#005BAA',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">板信</text>'},
+  '安泰':  {bg:'#E21F26',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">安泰</text>'},
+  '京城':  {bg:'#7B2D26',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">京城</text>'},
+  '上海':  {bg:'#003DA5',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">上海</text>'},
+  '瑞興':  {bg:'#003DA5',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">瑞興</text>'},
+  '新光':  {bg:'#E31937',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">新光</text>'},
+  '高雄':  {bg:'#0072BC',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">高銀</text>'},
+  '台中':  {bg:'#F7931E',svg:'<text x="50%" y="54%" font-size="13" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">台中</text>'},
+  // E-Wallets
+  'LINE Pay':{bg:'#06C755',svg:'<text x="50%" y="54%" font-size="9" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif" letter-spacing=".5">LINE</text>'},
+  'Apple Pay':{bg:'#000',svg:'<path d="M20.3 13.4c0-2.5 2-3.7 2.1-3.8a4.6 4.6 0 00-3.6-1.9c-1.5-.2-3 .9-3.8.9s-2-.9-3.3-.9a4.8 4.8 0 00-4.1 2.5c-1.8 3-.4 7.5 1.3 10 .8 1.2 1.8 2.6 3.2 2.5 1.3 0 1.7-.8 3.3-.8s2 .8 3.3.8 2.2-1.2 3-2.5a10 10 0 001.4-2.8 4.3 4.3 0 01-2.8-4z" fill="#fff"/>'},
+  '街口':    {bg:'#00C853',svg:'<text x="50%" y="54%" font-size="14" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">街</text>'},
+  '街口支付': {bg:'#00C853',svg:'<text x="50%" y="54%" font-size="14" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">街</text>'},
+  '微信':    {bg:'#07C160',svg:'<circle cx="13" cy="15" r="5" fill="#fff" opacity=".9"/><circle cx="20" cy="12" r="4" fill="#fff" opacity=".7"/>'},
+  '微信錢包': {bg:'#07C160',svg:'<circle cx="13" cy="15" r="5" fill="#fff" opacity=".9"/><circle cx="20" cy="12" r="4" fill="#fff" opacity=".7"/>'},
+  '支付寶':  {bg:'#1677FF',svg:'<text x="50%" y="54%" font-size="14" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">支</text>'},
+  'Paypal':  {bg:'#003087',svg:'<text x="50%" y="54%" font-size="14" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">P</text>'},
+  'PayPal':  {bg:'#003087',svg:'<text x="50%" y="54%" font-size="14" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">P</text>'},
+  '眾安':    {bg:'#E8383D',svg:'<text x="50%" y="54%" font-size="14" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">Z</text>'},
+  '眾安銀行': {bg:'#E8383D',svg:'<text x="50%" y="54%" font-size="14" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">Z</text>'},
+  '悠遊付':  {bg:'#00AEEF',svg:'<text x="50%" y="54%" font-size="11" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">悠遊</text>'},
+  'icash':   {bg:'#FF6B00',svg:'<text x="50%" y="54%" font-size="9" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">iC</text>'},
+  'Samsung Pay':{bg:'#1428A0',svg:'<text x="50%" y="54%" font-size="14" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">S</text>'},
+  'Google Pay':{bg:'#4285F4',svg:'<text x="50%" y="54%" font-size="14" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">G</text>'},
+  // Crypto
+  'Bitcoin': {bg:'#F7931A',svg:'<text x="50%" y="54%" font-size="16" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">₿</text>'},
+  'Ethereum':{bg:'#627EEA',svg:'<text x="50%" y="54%" font-size="14" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">Ξ</text>'}
+};
+
+// E-wallet sub-types for selection list
+var EWALLET_TYPES=[
+  {name:'LINE Pay',icon:'LINE Pay'},
+  {name:'Apple Pay',icon:'Apple Pay'},
+  {name:'街口支付',icon:'街口支付'},
+  {name:'微信錢包',icon:'微信錢包'},
+  {name:'支付寶',icon:'支付寶'},
+  {name:'眾安銀行',icon:'眾安銀行'},
+  {name:'Paypal',icon:'Paypal'},
+  {name:'悠遊付',icon:'悠遊付'},
+  {name:'Google Pay',icon:'Google Pay'},
+  {name:'Samsung Pay',icon:'Samsung Pay'},
+  {name:'其他電子錢包',icon:null}
+];
+
+function getAcctIconSvg(name){
+  // exact match first
+  if(ACCT_ICONS[name]) return ACCT_ICONS[name];
+  // partial match (e.g. "國泰世華" matches "國泰")
+  var keys=Object.keys(ACCT_ICONS);
+  for(var i=0;i<keys.length;i++){
+    if(name.indexOf(keys[i])>=0) return ACCT_ICONS[keys[i]];
+  }
+  return null;
+}
+
+function acctIconHtml(name,type,dot){
+  var ico=getAcctIconSvg(name);
+  if(ico){
+    return '<div class="acct-ico" style="background:'+ico.bg+'"><svg viewBox="0 0 32 32" width="28" height="28">'+ico.svg+'</svg></div>';
+  }
+  // fallback: colored dot
+  return '<div class="sdot" style="background:'+(dot||'#1db954')+'"></div>';
+}
+
 var L3_TYPES={
   liquid:['現金','電子錢包','其他'],
   invest:['股票','加密貨幣','貴金屬','其他'],
@@ -1263,7 +1359,7 @@ function buildL3Card(key,it,idx){
     valStr=fmtAmt(cvt(curVal));
   }
   el.innerHTML=
-    '<div class="sdot" style="background:'+it.dot+'"></div>'
+    acctIconHtml(it.name,it.type,it.dot)
     +'<div class="a3-info"><div class="a3-name">'+it.name+'</div>'
     +'<div class="a3-type">'+it.type+(it.desc?' · '+it.desc:'')+'</div></div>'
     +'<div class="a3-right"><div class="'+valCls+'">'+valStr+'</div>'+chgHtml+'</div>';
@@ -1472,22 +1568,55 @@ function submitRefi(){
 }
 
 // add account
+function _renderStepIcon(name){
+  var ico=getAcctIconSvg(name);
+  if(ico) return '<div class="acct-ico" style="background:'+ico.bg+';width:28px;height:28px;border-radius:7px"><svg viewBox="0 0 32 32" width="24" height="24">'+ico.svg+'</svg></div>';
+  return '';
+}
 function openAddAcct(key){
   st.addL1=key;
   var titles={liquid:'流動資金',invest:'投資',fixed:'固定資產',recv:'應收款',debt:'負債'};
   $('add-s2-ttl').textContent=titles[key]+' — 選擇帳戶類型';
   var list=$('add-s2-list');list.innerHTML='';
+  // clean up ewallet back button if present
+  var oldBack=list.parentNode.querySelector('.step-back');if(oldBack&&oldBack!==list)oldBack.remove();
   L3_TYPES[key].forEach(function(t){
     var div=document.createElement('div');div.className='step-item';
     div.innerHTML=t+'<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg>';
-    div.onclick=function(){addGoS3(t);};list.appendChild(div);
+    div.onclick=function(){
+      if(t==='電子錢包'){showEwalletList();return;}
+      addGoS3(t);
+    };
+    list.appendChild(div);
   });
   addShowStep(2);$('m-addacct').classList.add('on');
+}
+function showEwalletList(){
+  $('add-s2-ttl').textContent='電子錢包';
+  var list=$('add-s2-list');list.innerHTML='';
+  // back button
+  var back=document.createElement('div');back.className='step-back';
+  back.innerHTML='<svg viewBox="0 0 16 16"><path d="M10 4L6 8l4 4"/></svg>返回';
+  back.onclick=function(){openAddAcct(st.addL1);};
+  list.parentNode.insertBefore(back,list);
+  EWALLET_TYPES.forEach(function(w){
+    var div=document.createElement('div');div.className='step-item';
+    var icoHtml=w.icon?_renderStepIcon(w.icon):'<div class="acct-ico" style="background:var(--bg5);width:28px;height:28px;border-radius:7px"><svg viewBox="0 0 32 32" width="24" height="24"><text x="50%" y="54%" font-size="12" font-weight="700" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">…</text></svg></div>';
+    div.innerHTML=icoHtml+'<span style="flex:1;margin-left:4px">'+w.name+'</span><svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg>';
+    div.onclick=function(){
+      // remove back button
+      var bk=list.parentNode.querySelector('.step-back');if(bk&&bk!==list)bk.remove();
+      st._ewalletPreName=w.name==='其他電子錢包'?'':w.name;
+      addGoS3('電子錢包');
+    };
+    list.appendChild(div);
+  });
 }
 function addGoS2(key){st.addL1=key;openAddAcct(key);}
 function addGoS3(type){
   st.addL3=type;$('add-s3-ttl').textContent=type;
-  $('add-name').value='';$('add-bal').value='';$('add-desc').value='';
+  $('add-name').value=st._ewalletPreName||'';st._ewalletPreName=null;
+  $('add-bal').value='';$('add-desc').value='';
   $('add-stat-tog').classList.add('on');
   var isStock=(type==='股票');
   $('add-stock-f').style.display=isStock?'block':'none';
