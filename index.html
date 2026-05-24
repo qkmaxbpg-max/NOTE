@@ -15,7 +15,7 @@
 <!-- PWA: common -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=34">
+<link rel="stylesheet" href="style.css?v=37">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -264,15 +264,33 @@
     <!-- 股票 -->
     <div class="page" id="p-stocks">
       <div class="sk-summary">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">
-          <div><div class="ch-lbl">股票總市值</div><div class="ch-val" style="font-size:22px;margin-top:5px" id="sk-total">—</div></div>
-          <span class="chip up" id="sk-chip">—</span>
+        <!-- 總市值 header -->
+        <div class="sk-head-top">
+          <div class="sk-head-label">庫存總現值 (<span id="sk-head-ccy">TWD</span>)</div>
+          <div class="sk-head-ts" id="sk-price-ts"></div>
         </div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <span style="font-size:11px;color:var(--fg3)" id="sk-price-ts"></span>
-          <button class="sk-refresh-btn" id="sk-refresh" onclick="refreshPrices()"><svg viewBox="0 0 16 16" width="14" height="14"><path d="M13.65 2.35A7 7 0 1 0 15 8h-2a5 5 0 1 1-1.46-3.54L9 7h6V1z" fill="currentColor"/></svg> 更新報價</button>
+        <div class="sk-head-val-row">
+          <span class="sk-head-val" id="sk-total">—</span>
+          <span class="sk-head-pct" id="sk-chip">—</span>
         </div>
-        <div style="display:flex;align-items:center;gap:20px">
+        <!-- divider -->
+        <div class="sk-head-divider"></div>
+        <!-- 總成本 / 總報酬 -->
+        <div class="sk-head-detail">
+          <div class="sk-head-detail-col">
+            <div class="sk-head-detail-lbl">總成本</div>
+            <div class="sk-head-detail-val" id="sk-cost">—</div>
+          </div>
+          <div class="sk-head-detail-col" style="text-align:right">
+            <div class="sk-head-detail-lbl">不含息參考報酬</div>
+            <div class="sk-head-detail-val" id="sk-return">—</div>
+          </div>
+        </div>
+        <!-- 台/海外 比例 bar -->
+        <div class="sk-alloc-bar" id="sk-alloc-bar"></div>
+        <div class="sk-alloc-legend" id="sk-alloc-legend"></div>
+        <!-- 個股圓餅圖 -->
+        <div style="display:flex;align-items:center;gap:20px;margin-top:14px">
           <div style="position:relative;width:100px;height:100px;flex-shrink:0">
             <svg viewBox="0 0 120 120" style="width:100px;height:100px" id="sk-pie-svg">
               <circle cx="60" cy="60" r="44" fill="none" stroke="var(--bg4)" stroke-width="20"/>
@@ -980,6 +998,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=34"></script>
+<script src="app.js?v=37"></script>
 </body>
 </html>

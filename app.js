@@ -1103,20 +1103,13 @@ function updateHero(){
     var today=new Date().toISOString().slice(0,10);
     var nwKey='fintrack_nw_'+st.userId+'_';
     var prevNW=null;
-    // find most recent stored net worth before today
+    // always compare against yesterday (or most recent past day), never today
     try{
-      var stored=localStorage.getItem(nwKey+today);
-      // check yesterday first, then scan back up to 7 days
-      if(!stored){
-        for(var di=1;di<=7;di++){
-          var d=new Date();d.setDate(d.getDate()-di);
-          var dk=d.toISOString().slice(0,10);
-          var v=localStorage.getItem(nwKey+dk);
-          if(v){prevNW=parseFloat(v);break;}
-        }
-      } else {
-        // already stored today's opening — use it as base
-        prevNW=parseFloat(stored);
+      for(var di=1;di<=7;di++){
+        var d=new Date();d.setDate(d.getDate()-di);
+        var dk=d.toISOString().slice(0,10);
+        var v=localStorage.getItem(nwKey+dk);
+        if(v){prevNW=parseFloat(v);break;}
       }
     }catch(e){}
     // store today's net worth on first load of the day
@@ -2172,33 +2165,65 @@ function renderStocks(){
   var tw=all.filter(function(it){return !it.sk.isUs;});
   var us=all.filter(function(it){return it.sk.isUs;});
   var totVal=all.reduce(function(s,it){return s+Math.round(it.sk.shares*it.sk.curPrice*(it.sk.isUs?st.fxRate:1));},0);
-  $('sk-total').innerHTML=fmtN(cvt(totVal))+' <span style="font-size:13px;color:var(--fg2)">'+st.ccy+'</span>';
-  // ── sk-chip：股票組合未實現損益 ──
+  // ── header: currency label ──
+  var ccyLbl=$('sk-head-ccy');
+  if(ccyLbl) ccyLbl.textContent=st.ccy;
+  // ── total value ──
+  $('sk-total').textContent=fmtN(cvt(totVal));
+  // ── unrealized gain ──
   var totGain=all.reduce(function(s,it){var cv=Math.round(it.sk.shares*it.sk.curPrice*(it.sk.isUs?st.fxRate:1));var pt=Math.round((it.sk.paid||0)*(it.sk.isUs?st.fxRate:1));return s+(cv-pt);},0);
   var totCost=all.reduce(function(s,it){return s+Math.round((it.sk.paid||0)*(it.sk.isUs?st.fxRate:1));},0);
+  // ── return % chip (inline with total value) ──
   var skChipEl=$('sk-chip');
   if(skChipEl){
     if(!all.length||totCost===0){
-      skChipEl.className='chip up';skChipEl.textContent='▲ 0 +0.00%';
+      skChipEl.className='sk-head-pct up';skChipEl.textContent='(+0.00%)';
     } else {
       var skPct=(totGain/totCost*100).toFixed(2);
-      skChipEl.className='chip '+(totGain>=0?'up':'down');
-      skChipEl.textContent=(totGain>=0?'▲ +':'▼ ')+fmtN(cvt(Math.abs(totGain)))+' '+(totGain>=0?'+':'')+skPct+'%';
+      skChipEl.className='sk-head-pct '+(totGain>=0?'up':'dn');
+      skChipEl.textContent='('+(totGain>=0?'+':'')+skPct+'%)';
     }
   }
+  // ── 總成本 ──
+  var skCostEl=$('sk-cost');
+  if(skCostEl) skCostEl.textContent=fmtN(cvt(totCost));
+  // ── 總報酬 ──
+  var skRetEl=$('sk-return');
+  if(skRetEl){
+    skRetEl.textContent=(totGain>=0?'+':'')+fmtN(cvt(totGain));
+    skRetEl.style.color=totGain>=0?'var(--red)':'var(--green)';
+  }
+  // ── allocation bar: TW vs US ──
+  var twVal=tw.reduce(function(s,it){return s+Math.round(it.sk.shares*it.sk.curPrice);},0);
+  var usVal=us.reduce(function(s,it){return s+Math.round(it.sk.shares*it.sk.curPrice*st.fxRate);},0);
+  var barEl=$('sk-alloc-bar');
+  var legEl=$('sk-alloc-legend');
+  if(barEl&&totVal>0){
+    var twPct=(twVal/totVal*100).toFixed(2);
+    var usPct=(usVal/totVal*100).toFixed(2);
+    barEl.innerHTML='<div style="width:'+twPct+'%;background:var(--blue);height:100%"></div>'
+      +'<div style="width:'+usPct+'%;background:var(--teal);height:100%"></div>';
+    legEl.innerHTML='<div class="sk-alloc-leg"><div style="width:10px;height:10px;border-radius:3px;background:var(--blue)"></div>台 '+twPct+'%</div>'
+      +'<div class="sk-alloc-leg"><div style="width:10px;height:10px;border-radius:3px;background:var(--teal)"></div>海外股 '+usPct+'%</div>';
+  } else if(barEl){
+    barEl.innerHTML='';legEl.innerHTML='';
+  }
+  // ── 個股圓餅圖 ──
   var circ=2*Math.PI*44,pie=$('sk-pie-svg'),off=0;
-  pie.innerHTML='<circle cx="60" cy="60" r="44" fill="none" stroke="var(--bg4)" stroke-width="20"/>';
-  all.forEach(function(it){
-    var v=Math.round(it.sk.shares*it.sk.curPrice*(it.sk.isUs?st.fxRate:1)),pct=totVal>0?v/totVal:0;
-    var dash=pct*circ,gap=circ-dash;
-    var c=document.createElementNS('http://www.w3.org/2000/svg','circle');
-    c.setAttribute('cx','60');c.setAttribute('cy','60');c.setAttribute('r','44');
-    c.setAttribute('fill','none');c.setAttribute('stroke',it.dot);c.setAttribute('stroke-width','20');
-    c.setAttribute('stroke-dasharray',dash.toFixed(1)+' '+gap.toFixed(1));
-    c.setAttribute('stroke-dashoffset',(-off).toFixed(1));
-    c.setAttribute('transform','rotate(-90 60 60)');
-    pie.appendChild(c);off+=dash;
-  });
+  if(pie){
+    pie.innerHTML='<circle cx="60" cy="60" r="44" fill="none" stroke="var(--bg4)" stroke-width="20"/>';
+    all.forEach(function(it){
+      var v=Math.round(it.sk.shares*it.sk.curPrice*(it.sk.isUs?st.fxRate:1)),pct=totVal>0?v/totVal:0;
+      var dash=pct*circ,gap=circ-dash;
+      var c=document.createElementNS('http://www.w3.org/2000/svg','circle');
+      c.setAttribute('cx','60');c.setAttribute('cy','60');c.setAttribute('r','44');
+      c.setAttribute('fill','none');c.setAttribute('stroke',it.dot);c.setAttribute('stroke-width','20');
+      c.setAttribute('stroke-dasharray',dash.toFixed(1)+' '+gap.toFixed(1));
+      c.setAttribute('stroke-dashoffset',(-off).toFixed(1));
+      c.setAttribute('transform','rotate(-90 60 60)');
+      pie.appendChild(c);off+=dash;
+    });
+  }
   $('sk-legend').innerHTML=all.map(function(it){
     var v=Math.round(it.sk.shares*it.sk.curPrice*(it.sk.isUs?st.fxRate:1));
     var pct=totVal>0?(v/totVal*100).toFixed(1):'0.0';
