@@ -4026,6 +4026,34 @@ $('themeBtn').addEventListener('click',function(){
   $('icoSun').style.display=st.light?'block':'none';
 });
 $('eyeBtn').addEventListener('click',function(){st.masked=!st.masked;updateHero();});
+
+// ── Refresh button: short tap = refreshPrices, long press = full reload ──
+(function(){
+  var rb=$('refreshBtn');if(!rb)return;
+  var _lpTimer=null,_didLong=false;
+  function startLP(e){
+    e.preventDefault();_didLong=false;
+    _lpTimer=setTimeout(function(){
+      _didLong=true;
+      navigator.serviceWorker.getRegistration().then(function(reg){
+        if(reg)return reg.unregister();
+      }).then(function(){
+        return caches.keys().then(function(ks){return Promise.all(ks.map(function(k){return caches.delete(k);}));});
+      }).then(function(){window.location.reload();});
+    },600);
+  }
+  function endLP(e){
+    e.preventDefault();clearTimeout(_lpTimer);
+    if(!_didLong) refreshPrices();
+  }
+  rb.addEventListener('touchstart',startLP,{passive:false});
+  rb.addEventListener('touchend',endLP,{passive:false});
+  rb.addEventListener('touchcancel',function(){clearTimeout(_lpTimer);});
+  rb.addEventListener('mousedown',startLP);
+  rb.addEventListener('mouseup',endLP);
+  rb.addEventListener('mouseleave',function(){clearTimeout(_lpTimer);});
+})();
+
 function setCcy(c,btn){
   document.querySelectorAll('.ccy-btn').forEach(function(b){b.classList.remove('on');});
   btn.classList.add('on');
