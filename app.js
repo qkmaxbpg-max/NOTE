@@ -2124,7 +2124,7 @@ function renderPledgeStocksSelector(prefix,currentPledged){
     html+='<div class="pledge-stock-sub">市值 '+ccySym()+' '+fmtN(cvt(mkt))+' · 持有 '+fmtN(totalShares)+' 股</div></div></div>';
     html+='<div class="pledge-stock-exp" id="pse-'+prefix+'-'+stk.id+'" style="'+(checked?'':'display:none')+'">';
     html+='<div class="field" style="margin:8px 14px 12px"><label>質押股數（最多 '+fmtN(totalShares)+' 股）</label>';
-    html+='<input type="number" id="pss-'+prefix+'-'+stk.id+'" value="'+defShares+'" max="'+totalShares+'" min="1"></div>';
+    html+='<input type="text" inputmode="decimal" id="pss-'+prefix+'-'+stk.id+'" value="'+defShares+'" max="'+totalShares+'" min="1"></div>';
     html+='</div></div>';
   });
   container.innerHTML=html;
@@ -2848,7 +2848,7 @@ function renderTx(){
         html+='<div class="txchev" id="tc-'+idx+'"><svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></div></div></div>';
         html+='<div class="tx-edit" id="te-'+idx+'">';
         html+='<div class="f2">';
-        html+='<div class="field"><label>金額</label><input type="number" id="ea-'+idx+'" value="'+Math.abs(t.amt)+'"></div>';
+        html+='<div class="field"><label>金額</label><input type="text" inputmode="decimal" id="ea-'+idx+'" value="'+Math.abs(t.amt)+'"></div>';
         html+='<div class="field"><label>日期</label><input type="date" id="ed-'+idx+'" value="'+t.date+'"></div>';
         html+='</div><div class="f2">';
         html+='<div class="field"><label>類別</label><select id="ec-'+idx+'">'+catOpts+'</select></div>';
@@ -3458,13 +3458,13 @@ function _buildSkiEditForm(el,tx,txId,acctId,isSell,isUs,curSh,curPr,curAmt,curD
   h+='<div style="flex:1;min-width:100px"><label>日期</label><input type="date" id="ski-ed-date-'+txId+'" value="'+curDate+'"></div>';
   h+='</div>';
   h+='<div class="ski-edit-row" style="flex-wrap:wrap">';
-  h+='<div style="flex:1;min-width:60px"><label>'+(isSell?'賣出股數':'買入股數')+'</label><input type="number" id="ski-ed-sh-'+txId+'" value="'+curSh+'" oninput="calcSkiEditFee('+txId+','+acctId+')"></div>';
-  h+='<div style="flex:1;min-width:60px"><label>'+(isSell?'賣出價格':'買入價格')+'</label><input type="number" id="ski-ed-pr-'+txId+'" value="'+curPr+'" step="0.01" oninput="calcSkiEditFee('+txId+','+acctId+')"></div>';
+  h+='<div style="flex:1;min-width:60px"><label>'+(isSell?'賣出股數':'買入股數')+'</label><input type="text" inputmode="decimal" id="ski-ed-sh-'+txId+'" value="'+curSh+'" oninput="calcSkiEditFee('+txId+','+acctId+')"></div>';
+  h+='<div style="flex:1;min-width:60px"><label>'+(isSell?'賣出價格':'買入價格')+'</label><input type="text" inputmode="decimal" id="ski-ed-pr-'+txId+'" value="'+curPr+'" step="0.01" oninput="calcSkiEditFee('+txId+','+acctId+')"></div>';
   h+='</div>';
   h+='<div class="ski-edit-row">';
   h+='<div style="flex:1"><label>'+(isSell?'實際收到':'實際付出')+'</label>';
   h+='<div style="display:flex;gap:6px;align-items:center">';
-  h+='<input type="number" id="ski-ed-amt-'+txId+'" value="'+curAmt+'" style="flex:1" oninput="calcSkiEditFee('+txId+','+acctId+')">';
+  h+='<input type="text" inputmode="decimal" id="ski-ed-amt-'+txId+'" value="'+curAmt+'" style="flex:1" oninput="calcSkiEditFee('+txId+','+acctId+')">';
   h+='<div class="paid-ccy-tog" id="ski-ccy-tog-'+txId+'" style="flex-shrink:0">';
   h+='<button class="paid-ccy-btn on" onclick="setSkiEditCcy('+txId+',\'TWD\')">NT$</button>';
   h+='<button class="paid-ccy-btn" onclick="setSkiEditCcy('+txId+',\'USD\')">US$</button>';
@@ -5349,7 +5349,7 @@ function _calcHistHtml(type){
 }
 function _fld(id,label,type,placeholder,extra){
   extra=extra||'';
-  return '<div class="field"><label>'+label+'</label><input id="c-'+id+'" type="'+(type||'number')+'" placeholder="'+(placeholder||'')+'" step="any" '+extra+'></div>';
+  return '<div class="field"><label>'+label+'</label><input id="c-'+id+'" type="'+(type||'text" inputmode="decimal')+'" placeholder="'+(placeholder||'')+'" step="any" '+extra+'></div>';
 }
 function _sel(id,label,opts){
   var html='<div class="field"><label>'+label+'</label><select id="c-'+id+'">';
@@ -5639,7 +5639,7 @@ function _renderIrrRows(){
   _irrRows.forEach(function(r,i){
     html+='<div class="irr-row">'
       +'<input type="date" value="'+r.date+'" onchange="_irrRows['+i+'].date=this.value">'
-      +'<input type="number" value="'+r.amount+'" step="any" placeholder="金額" onchange="_irrRows['+i+'].amount=parseFloat(this.value)||0">'
+      +'<input type="text" inputmode="decimal" value="'+r.amount+'" step="any" placeholder="金額" onchange="_irrRows['+i+'].amount=parseFloat(this.value)||0">'
       +(_irrRows.length>2?'<button class="irr-del" onclick="_delIrrRow('+i+')">✕</button>':'')
       +'</div>';
   });
@@ -5814,9 +5814,9 @@ function renderRetireSetup(el){
   html+='<div style="font-size:18px;font-weight:600;color:var(--fg0);margin-bottom:4px">退休動態提領分析</div>';
   html+='<div style="font-size:13px;color:var(--fg2)">設定初始參數開始追蹤</div>';
   html+='</div>';
-  html+='<div class="field"><label>初始本金 P₀ (TWD)</label><input type="number" id="ret-p0" value="'+stockTotal+'" style="font-family:var(--mono)"></div>';
-  html+='<div class="field"><label>初始提領率 R₀ (%)</label><input type="number" id="ret-r0" placeholder="4" step="0.1" value="4"></div>';
-  html+='<div class="field"><label>通膨率 i (%)</label><input type="number" id="ret-inf" placeholder="2" step="0.1" value="2"></div>';
+  html+='<div class="field"><label>初始本金 P₀ (TWD)</label><input type="text" inputmode="decimal" id="ret-p0" value="'+stockTotal+'" style="font-family:var(--mono)"></div>';
+  html+='<div class="field"><label>初始提領率 R₀ (%)</label><input type="text" inputmode="decimal" id="ret-r0" placeholder="4" step="0.1" value="4"></div>';
+  html+='<div class="field"><label>通膨率 i (%)</label><input type="text" inputmode="decimal" id="ret-inf" placeholder="2" step="0.1" value="2"></div>';
   html+='<div style="font-size:11px;color:var(--fg3);margin-bottom:16px">* 初始本金已自動填入目前股票總市值 '+fmtN(stockTotal)+' TWD</div>';
   html+='<button class="ret-calc-btn" onclick="saveRetireConfig()">開始</button>';
   html+='</div>';
@@ -5843,9 +5843,9 @@ function renderRetireFull(el){
   // manual input panel
   html+='<div id="ret-manual-panel" class="ret-manual-panel'+(_retManual?' open':'')+'">';
   html+='<div class="ret-manual-grid">';
-  html+='<div class="field"><label>年度</label><input type="number" id="ret-m-year" value="'+new Date().getFullYear()+'" style="font-family:var(--mono)"></div>';
-  html+='<div class="field"><label>年末資產</label><input type="number" id="ret-m-assets" value="'+getStockTotal()+'" style="font-family:var(--mono)"></div>';
-  html+='<div class="field"><label>實際提領金額</label><input type="number" id="ret-m-withdraw" value="0" style="font-family:var(--mono)"></div>';
+  html+='<div class="field"><label>年度</label><input type="text" inputmode="decimal" id="ret-m-year" value="'+new Date().getFullYear()+'" style="font-family:var(--mono)"></div>';
+  html+='<div class="field"><label>年末資產</label><input type="text" inputmode="decimal" id="ret-m-assets" value="'+getStockTotal()+'" style="font-family:var(--mono)"></div>';
+  html+='<div class="field"><label>實際提領金額</label><input type="text" inputmode="decimal" id="ret-m-withdraw" value="0" style="font-family:var(--mono)"></div>';
   html+='</div>';
   html+='<button class="ret-calc-btn" onclick="calcRetireYearManual()" style="margin-top:8px">計算並儲存</button>';
   html+='</div>';
@@ -6526,7 +6526,7 @@ function _renderBudgetFields(mode){
   var h='';
   if(mode==='total'||mode==='both'){
     h+='<div class="field"><label>每月總預算</label>';
-    h+='<input type="number" id="set-budget-total" placeholder="0" value="'+(stored._total||'')+'" style="font-family:var(--mono)">';
+    h+='<input type="text" inputmode="decimal" id="set-budget-total" placeholder="0" value="'+(stored._total||'')+'" style="font-family:var(--mono)">';
     h+='</div>';
   }
   if(mode==='category'||mode==='both'){
@@ -6535,7 +6535,7 @@ function _renderBudgetFields(mode){
       h+='<div class="set-budget-row">';
       h+='<span class="set-budget-ico">'+c.icon+'</span>';
       h+='<span class="set-budget-name">'+c.name+'</span>';
-      h+='<input type="number" class="set-budget-input" data-cat-id="'+c.id+'" placeholder="0" value="'+(stored['c_'+c.id]||'')+'">';
+      h+='<input type="text" inputmode="decimal" class="set-budget-input" data-cat-id="'+c.id+'" placeholder="0" value="'+(stored['c_'+c.id]||'')+'">';
       h+='</div>';
     });
   }
@@ -6626,8 +6626,8 @@ function showRecurForm(idx){
   h+='<div style="font-size:12px;color:var(--fg2);margin-bottom:8px">'+(isEdit?'編輯':'新增')+'定期交易</div>';
   h+='<div class="field"><label>名稱</label><input type="text" id="set-recur-name" value="'+(it.name||'')+'" placeholder="如：房租、水電費"></div>';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
-  h+='<div class="field"><label>金額</label><input type="number" id="set-recur-amt" value="'+(it.amount||'')+'" placeholder="0"></div>';
-  h+='<div class="field"><label>每月日期</label><input type="number" id="set-recur-day" value="'+(it.day||1)+'" min="1" max="28" placeholder="1"></div>';
+  h+='<div class="field"><label>金額</label><input type="text" inputmode="decimal" id="set-recur-amt" value="'+(it.amount||'')+'" placeholder="0"></div>';
+  h+='<div class="field"><label>每月日期</label><input type="text" inputmode="decimal" id="set-recur-day" value="'+(it.day||1)+'" min="1" max="28" placeholder="1"></div>';
   h+='</div>';
   h+='<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
   h+='<div class="field"><label>分類</label><select id="set-recur-cat" style="width:100%;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:10px 8px;font-family:var(--font);font-size:13px;color:var(--fg0);-webkit-appearance:none">';

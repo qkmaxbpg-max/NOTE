@@ -444,7 +444,7 @@
       <div class="step-back" onclick="addShowStep(2)"><svg viewBox="0 0 16 16"><path d="M10 4L6 8l4 4"/></svg>返回</div>
       <div class="mttl" id="add-s3-ttl">帳戶設定</div>
       <div class="field"><label>帳戶名稱</label><input type="text" id="add-name" placeholder="自訂名稱"></div>
-      <div class="field" id="add-bal-wrap"><label>餘額（NT$）</label><input type="number" id="add-bal" placeholder="0" inputmode="decimal" oninput="calcAddLoan();updateCcyPreview('add');calcLoanDisburse()"></div>
+      <div class="field" id="add-bal-wrap"><label>餘額（NT$）</label><input type="text" inputmode="decimal" id="add-bal" placeholder="0" inputmode="decimal" oninput="calcAddLoan();updateCcyPreview('add');calcLoanDisburse()"></div>
       <div id="add-ccy-wrap">
         <label style="font-size:12px;color:var(--fg2);margin-bottom:6px;display:block">幣別</label>
         <div class="ccy-chips" id="add-ccy-chips"></div>
@@ -465,13 +465,13 @@
           <input type="hidden" id="add-ticker">
           <input type="hidden" id="add-isUs">
           <div class="f2">
-            <div class="field"><label>持有股數</label><input type="number" id="add-shares" placeholder="0" oninput="calcAddFee()"></div>
-            <div class="field"><label>買入均價</label><input type="number" id="add-price" placeholder="0.00" step="0.01" oninput="calcAddFee()"></div>
+            <div class="field"><label>持有股數</label><input type="text" inputmode="decimal" id="add-shares" placeholder="0" oninput="calcAddFee()"></div>
+            <div class="field"><label>買入均價</label><input type="text" inputmode="decimal" id="add-price" placeholder="0.00" step="0.01" oninput="calcAddFee()"></div>
           </div>
           <div class="field">
             <label>實際付出</label>
             <div class="paid-input-row">
-              <input type="number" id="add-paid" placeholder="0" oninput="calcAddFee()" style="flex:1">
+              <input type="text" inputmode="decimal" id="add-paid" placeholder="0" oninput="calcAddFee()" style="flex:1">
               <div class="paid-ccy-tog" id="add-paid-ccy-tog">
                 <button class="paid-ccy-btn on" onclick="setPaidCcy('add','TWD')">NT$</button>
                 <button class="paid-ccy-btn" onclick="setPaidCcy('add','USD')">US$</button>
@@ -514,14 +514,14 @@
           </select>
         </div>
         <div class="f2">
-          <div class="field"><label>年利率（%）</label><input type="number" id="add-rate" placeholder="3.08" step="0.01" oninput="calcAddLoan()"></div>
-          <div class="field" id="add-months-wrap"><label id="add-months-lbl">總期數（月）</label><input type="number" id="add-months" placeholder="84" oninput="calcAddLoan()"></div>
+          <div class="field"><label>年利率（%）</label><input type="text" inputmode="decimal" id="add-rate" placeholder="3.08" step="0.01" oninput="calcAddLoan()"></div>
+          <div class="field" id="add-months-wrap"><label id="add-months-lbl">總期數（月）</label><input type="text" inputmode="decimal" id="add-months" placeholder="84" oninput="calcAddLoan()"></div>
         </div>
         <div class="f2">
           <div class="field"><label>還款起始日</label><input type="date" id="add-loan-start"></div>
-          <div class="field"><label>每月扣款日</label><input type="number" id="add-pay-day" placeholder="22" min="1" max="28"></div>
+          <div class="field"><label>每月扣款日</label><input type="text" inputmode="decimal" id="add-pay-day" placeholder="22" min="1" max="28"></div>
         </div>
-        <div class="field" id="add-pmt-wrap"><label>每期還款金額（選填，留空自動計算）</label><input type="number" id="add-pmt-override" placeholder="系統自動計算" step="1" oninput="calcAddLoan()"></div>
+        <div class="field" id="add-pmt-wrap"><label>每期還款金額（選填，留空自動計算）</label><input type="text" inputmode="decimal" id="add-pmt-override" placeholder="系統自動計算" step="1" oninput="calcAddLoan()"></div>
         <div class="info-box" id="add-loan-box" style="display:none">
           <div class="info-row"><span class="info-lbl" id="add-monthly-lbl">每月還款</span><span class="info-val" id="add-monthly">—</span></div>
           <div class="info-row" id="add-pp-row"><span class="info-lbl">每月本金</span><span class="info-val" id="add-pp">—</span></div>
@@ -536,7 +536,7 @@
             <div class="acct-pick-btn" id="add-disburse-btn" onclick="openAcctPicker('add-disburse')">選擇入帳帳戶</div>
             <input type="hidden" id="add-disburse-id">
           </div>
-          <div class="field"><label>手續費 / 開辦費</label><input type="number" id="add-loan-fee" placeholder="0" oninput="calcLoanDisburse()"></div>
+          <div class="field"><label>手續費 / 開辦費</label><input type="text" inputmode="decimal" id="add-loan-fee" placeholder="0" oninput="calcLoanDisburse()"></div>
           <div class="info-box" id="add-disburse-box" style="display:none">
             <div class="info-row"><span class="info-lbl">借款金額</span><span class="info-val" id="add-dis-amt">—</span></div>
             <div class="info-row"><span class="info-lbl">扣除費用</span><span class="info-val" id="add-dis-fee">— 0</span></div>
@@ -561,7 +561,7 @@
     <div class="mpull"></div>
     <div class="mttl" id="edit-ttl">編輯帳戶</div>
     <div class="field"><label>帳戶名稱</label><input type="text" id="edit-name"></div>
-    <div class="field" id="edit-bal-wrap"><label>餘額（NT$）</label><input type="number" id="edit-bal" oninput="calcEditLoan();updateCcyPreview('edit')"></div>
+    <div class="field" id="edit-bal-wrap"><label>餘額（NT$）</label><input type="text" inputmode="decimal" id="edit-bal" oninput="calcEditLoan();updateCcyPreview('edit')"></div>
     <div id="edit-ccy-wrap">
       <label style="font-size:12px;color:var(--fg2);margin-bottom:6px;display:block">幣別</label>
       <div class="ccy-chips" id="edit-ccy-chips"></div>
@@ -570,10 +570,10 @@
     </div>
     <div id="edit-stock-f" style="display:none">
       <div class="f2">
-        <div class="field"><label>持有股數</label><input type="number" id="edit-shares" placeholder="0" oninput="calcEditStockFee()"></div>
-        <div class="field"><label>買入均價</label><input type="number" id="edit-price" placeholder="0.00" step="0.01" oninput="calcEditStockFee()"></div>
+        <div class="field"><label>持有股數</label><input type="text" inputmode="decimal" id="edit-shares" placeholder="0" oninput="calcEditStockFee()"></div>
+        <div class="field"><label>買入均價</label><input type="text" inputmode="decimal" id="edit-price" placeholder="0.00" step="0.01" oninput="calcEditStockFee()"></div>
       </div>
-      <div class="field"><label>實際付出總金額</label><input type="number" id="edit-paid" placeholder="0" oninput="calcEditStockFee()"></div>
+      <div class="field"><label>實際付出總金額</label><input type="text" inputmode="decimal" id="edit-paid" placeholder="0" oninput="calcEditStockFee()"></div>
       <div class="info-box" id="edit-fee-box" style="display:none">
         <div class="info-row"><span class="info-lbl">股票成本</span><span class="info-val" id="edit-sub">—</span><span class="info-hint" id="edit-sub-hint"></span></div>
         <div class="info-row"><span class="info-lbl">手續費</span><span class="info-val" id="edit-fee">—</span></div>
@@ -619,14 +619,14 @@
           </select>
         </div>
         <div class="f2">
-          <div class="field"><label>年利率（%）</label><input type="number" id="edit-rate" step="0.01" oninput="calcEditLoan()"></div>
-          <div class="field" id="edit-months-wrap"><label id="edit-months-lbl">總期數（月）</label><input type="number" id="edit-months" oninput="calcEditLoan()"></div>
+          <div class="field"><label>年利率（%）</label><input type="text" inputmode="decimal" id="edit-rate" step="0.01" oninput="calcEditLoan()"></div>
+          <div class="field" id="edit-months-wrap"><label id="edit-months-lbl">總期數（月）</label><input type="text" inputmode="decimal" id="edit-months" oninput="calcEditLoan()"></div>
         </div>
         <div class="f2">
           <div class="field"><label>還款起始日</label><input type="date" id="edit-loan-start"></div>
-          <div class="field"><label>每月扣款日</label><input type="number" id="edit-pay-day" min="1" max="28"></div>
+          <div class="field"><label>每月扣款日</label><input type="text" inputmode="decimal" id="edit-pay-day" min="1" max="28"></div>
         </div>
-        <div class="field" id="edit-pmt-wrap"><label>每期還款金額（選填）</label><input type="number" id="edit-pmt-override" placeholder="系統自動計算" oninput="calcEditLoan()"></div>
+        <div class="field" id="edit-pmt-wrap"><label>每期還款金額（選填）</label><input type="text" inputmode="decimal" id="edit-pmt-override" placeholder="系統自動計算" oninput="calcEditLoan()"></div>
         <div class="info-box" id="edit-loan-preview" style="display:none">
           <div class="info-row"><span class="info-lbl">每月還款</span><span class="info-val" id="edit-monthly">—</span></div>
           <div class="info-row" id="edit-pp-row"><span class="info-lbl">每月本金</span><span class="info-val" id="edit-pp">—</span></div>
@@ -666,7 +666,7 @@
       <button class="tbtn" onclick="setTxType('tf',this)">轉帳</button>
     </div>
     <div id="tx-normal-fields">
-      <div class="field"><label>金額（NT$）</label><input type="number" id="f-amt" placeholder="0" inputmode="decimal" style="font-size:22px;font-family:var(--mono)"></div>
+      <div class="field"><label>金額（NT$）</label><input type="text" inputmode="decimal" id="f-amt" placeholder="0" inputmode="decimal" style="font-size:22px;font-family:var(--mono)"></div>
       <div class="f2">
         <div class="field"><label>日期</label><input type="date" id="f-date"></div>
         <div class="field"><label>帳戶</label>
@@ -710,13 +710,13 @@
         </div>
       </div>
       <div class="f2">
-        <div class="field"><label>買入股數</label><input type="number" id="tx-buy-sh" placeholder="0" oninput="calcTxBuyFee()"></div>
-        <div class="field"><label>買入價格</label><input type="number" id="tx-buy-pr" placeholder="0.00" step="0.01" oninput="calcTxBuyFee()"></div>
+        <div class="field"><label>買入股數</label><input type="text" inputmode="decimal" id="tx-buy-sh" placeholder="0" oninput="calcTxBuyFee()"></div>
+        <div class="field"><label>買入價格</label><input type="text" inputmode="decimal" id="tx-buy-pr" placeholder="0.00" step="0.01" oninput="calcTxBuyFee()"></div>
       </div>
       <div class="field">
         <label>實際付出</label>
         <div class="paid-input-row">
-          <input type="number" id="tx-buy-paid" placeholder="0" oninput="calcTxBuyFee()" style="flex:1">
+          <input type="text" inputmode="decimal" id="tx-buy-paid" placeholder="0" oninput="calcTxBuyFee()" style="flex:1">
           <div class="paid-ccy-tog" id="txb-paid-ccy-tog">
             <button class="paid-ccy-btn on" onclick="setPaidCcy('txb','TWD')">NT$</button>
             <button class="paid-ccy-btn" onclick="setPaidCcy('txb','USD')">US$</button>
@@ -751,13 +751,13 @@
       </div>
       <div id="tx-sell-info" style="display:none;font-size:12px;color:var(--fg2);padding:8px 12px;background:var(--bg2);border-radius:8px;margin-bottom:8px"></div>
       <div class="f2">
-        <div class="field"><label>賣出股數</label><input type="number" id="tx-sell-sh" placeholder="0" oninput="calcTxSell()"></div>
-        <div class="field"><label>賣出價格</label><input type="number" id="tx-sell-pr" placeholder="0.00" step="0.01" oninput="calcTxSell()"></div>
+        <div class="field"><label>賣出股數</label><input type="text" inputmode="decimal" id="tx-sell-sh" placeholder="0" oninput="calcTxSell()"></div>
+        <div class="field"><label>賣出價格</label><input type="text" inputmode="decimal" id="tx-sell-pr" placeholder="0.00" step="0.01" oninput="calcTxSell()"></div>
       </div>
       <div class="field">
         <label>實際收到</label>
         <div class="paid-input-row">
-          <input type="number" id="tx-sell-recv" placeholder="0" oninput="calcTxSell()" style="flex:1">
+          <input type="text" inputmode="decimal" id="tx-sell-recv" placeholder="0" oninput="calcTxSell()" style="flex:1">
           <div class="paid-ccy-tog" id="txs-paid-ccy-tog">
             <button class="paid-ccy-btn on" onclick="setPaidCcy('txs','TWD')">NT$</button>
             <button class="paid-ccy-btn" onclick="setPaidCcy('txs','USD')">US$</button>
@@ -810,13 +810,13 @@
       <input type="hidden" id="s-tk">
       <input type="hidden" id="s-mkt">
       <div class="f2">
-        <div class="field"><label>持有股數</label><input type="number" id="s-sh" placeholder="0" oninput="calcSkFee()"></div>
-        <div class="field"><label>買入均價</label><input type="number" id="s-cp" placeholder="0.00" step="0.01" oninput="calcSkFee()"></div>
+        <div class="field"><label>持有股數</label><input type="text" inputmode="decimal" id="s-sh" placeholder="0" oninput="calcSkFee()"></div>
+        <div class="field"><label>買入均價</label><input type="text" inputmode="decimal" id="s-cp" placeholder="0.00" step="0.01" oninput="calcSkFee()"></div>
       </div>
       <div class="field">
         <label>實際付出</label>
         <div class="paid-input-row">
-          <input type="number" id="s-paid" placeholder="0" oninput="calcSkFee()" style="flex:1">
+          <input type="text" inputmode="decimal" id="s-paid" placeholder="0" oninput="calcSkFee()" style="flex:1">
           <div class="paid-ccy-tog" id="s-paid-ccy-tog">
             <button class="paid-ccy-btn on" onclick="setPaidCcy('s','TWD')">NT$</button>
             <button class="paid-ccy-btn" onclick="setPaidCcy('s','USD')">US$</button>
@@ -858,7 +858,7 @@
 <div class="backdrop" id="m-transfer">
   <div class="modal">
     <div class="mpull"></div><div class="mttl">轉帳</div>
-    <div class="field"><label>金額（NT$）</label><input type="number" id="tf-amt" placeholder="0" inputmode="decimal" style="font-size:22px;font-family:var(--mono)"></div>
+    <div class="field"><label>金額（NT$）</label><input type="text" inputmode="decimal" id="tf-amt" placeholder="0" inputmode="decimal" style="font-size:22px;font-family:var(--mono)"></div>
     <div class="field">
       <label>從</label>
       <div class="acct-pick-btn" id="tf-from-btn" onclick="openAcctPicker('tf-from')">選擇轉出帳戶</div>
@@ -932,7 +932,7 @@
     <div class="field">
       <label>還款金額（NT$）</label>
       <div style="display:flex;gap:8px">
-        <input type="number" id="payoff-amount" placeholder="輸入金額" inputmode="decimal" style="flex:1" oninput="onPayoffAmountChange()">
+        <input type="text" inputmode="decimal" id="payoff-amount" placeholder="輸入金額" inputmode="decimal" style="flex:1" oninput="onPayoffAmountChange()">
         <button onclick="setPayoffFull()" style="padding:0 16px;border-radius:var(--rs);border:1.5px solid var(--green);background:var(--gbg);color:var(--green);font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;flex-shrink:0">全部</button>
       </div>
     </div>
@@ -954,7 +954,7 @@
     <div class="info-box" id="refi-old-info" style="margin-bottom:16px"></div>
     <div style="font-size:11px;color:var(--fg2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">新貸款設定</div>
     <div class="field"><label>新貸款名稱</label><input type="text" id="refi-name" placeholder="如：玉山代償貸款"></div>
-    <div class="field"><label>代償金額（NT$）</label><input type="number" id="refi-bal"></div>
+    <div class="field"><label>代償金額（NT$）</label><input type="text" inputmode="decimal" id="refi-bal"></div>
     <div class="field"><label>還款類型</label>
       <select id="refi-repay-type">
         <option value="本息平均攤還">本息平均攤還</option>
@@ -963,12 +963,12 @@
       </select>
     </div>
     <div class="f2">
-      <div class="field"><label>年利率（%）</label><input type="number" id="refi-rate" step="0.01" placeholder="0.00"></div>
-      <div class="field"><label>總期數（月）</label><input type="number" id="refi-months" placeholder="84"></div>
+      <div class="field"><label>年利率（%）</label><input type="text" inputmode="decimal" id="refi-rate" step="0.01" placeholder="0.00"></div>
+      <div class="field"><label>總期數（月）</label><input type="text" inputmode="decimal" id="refi-months" placeholder="84"></div>
     </div>
     <div class="f2">
       <div class="field"><label>還款起始日</label><input type="date" id="refi-start"></div>
-      <div class="field"><label>每月扣款日</label><input type="number" id="refi-pay-day" min="1" max="28"></div>
+      <div class="field"><label>每月扣款日</label><input type="text" inputmode="decimal" id="refi-pay-day" min="1" max="28"></div>
     </div>
     <button class="subbtn" onclick="submitRefi()">🔄 確認代償</button>
     <button class="subbtn danger" onclick="$('m-refi').classList.remove('on')">取消</button>
