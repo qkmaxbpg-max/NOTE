@@ -200,7 +200,7 @@ function fmtN(n){return Math.abs(Math.round(n)).toLocaleString('zh-TW');}
 function fmtAmt(n){return(n<0?'－':'')+fmtN(n);}
 function cvt(n){return st.ccy==='USD'?Math.round(n/st.fxRate):Math.round(n);}
 function ccySym(){return st.ccy==='USD'?'US$':'NT$';}
-function acctVal(it){return it.sk?Math.round(it.sk.shares*it.sk.curPrice*(it.sk.isUs?st.fxRate:1)):it.bal;}
+function acctVal(it){return it.sk&&it.sk.shares!=null&&it.sk.curPrice!=null?Math.round(it.sk.shares*it.sk.curPrice*(it.sk.isUs?st.fxRate:1)):it.bal;}
 
 // ── Yahoo Finance via Supabase RPC (server-side proxy) ──
 function yfQuote(symbol){
@@ -1899,7 +1899,7 @@ function openEditAcct(key,idx){
   $('edit-desc').value=it.desc||'';
   $('edit-stat').classList.toggle('on',it.stat);
   // stock fields
-  var isStock=!!it.sk;
+  var isStock=editIsStock;
   $('edit-bal-wrap').style.display=isStock?'none':'';
   $('edit-stock-f').style.display=isStock?'block':'none';
   if(isStock){
