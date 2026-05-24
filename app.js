@@ -1253,7 +1253,7 @@ function buildL3Card(key,it,idx){
   var valCls=it.bal<0?'a3-val r':'a3-val';
   var valStr=fmtAmt(cvt(it.bal));
   var chgHtml='';
-  if(it.sk){
+  if(it.sk&&it.sk.shares!=null&&it.sk.curPrice!=null){
     var sk=it.sk;
     var curVal=Math.round(sk.shares*sk.curPrice*(sk.isUs?st.fxRate:1));
     var paidTWD2=Math.round((sk.paid||0)*(sk.isUs?st.fxRate:1));
@@ -2026,7 +2026,7 @@ function submitEdit(){
     }
   }
   // save stock data
-  if(it.sk){
+  if(it.sk&&it.type==='股票'){
     var newLev=parseInt($('edit-leverage').value)||1;
     var eSh=parseFloat($('edit-shares').value)||0;
     var ePr=parseFloat($('edit-price').value)||0;
