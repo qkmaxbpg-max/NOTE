@@ -1760,19 +1760,15 @@ function submitAddAcct(){
         var proms=[];
         proms.push(api('POST','/api/transactions',{
           date:new Date().toISOString().slice(0,10),
-          name:'買入股票',category:'買入股票',amount:Math.round(addPaidTWD),
-          note:addTicker+' +'+sh+'股 @'+pr,icon:'📈',recurring:false,account_id:existingAdd.id
+          name:'買入股票',category:'買入股票',amount:-Math.round(addPaidTWD),
+          note:addTicker+' +'+sh+'股 @'+pr,icon:'📈',recurring:false,account_id:existingAdd.id,_skipBal:true
         }));
         if(addSkSrcId2){
-          var sa=allAccounts.find(function(a){return a.id===addSkSrcId2;});
-          if(sa){
-            proms.push(sb.from('accounts').update({balance:sa.bal-Math.round(addPaidTWD)}).eq('id',addSkSrcId2));
-            proms.push(api('POST','/api/transactions',{
-              date:new Date().toISOString().slice(0,10),
-              name:'購入股票',category:'購入股票',amount:-Math.round(addPaidTWD),
-              note:addTicker,icon:'📈',recurring:false,account_id:addSkSrcId2
-            }));
-          }
+          proms.push(api('POST','/api/transactions',{
+            date:new Date().toISOString().slice(0,10),
+            name:'購入股票',category:'購入股票',amount:-Math.round(addPaidTWD),
+            note:addTicker,icon:'📈',recurring:false,account_id:addSkSrcId2
+          }));
         }
         return Promise.all(proms).then(function(){
           $('m-addacct').classList.remove('on');
@@ -4170,7 +4166,8 @@ function renderChart(period){
   if(chartPeriod==='月'){
     // 目前月份每日淨資產 — 用交易倒推
     api('GET','/api/transactions').then(function(allTxs){
-      var nonTrans=allTxs.filter(function(t){return t.category!=='轉帳';});
+      var _skChartCats=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額','貸款撥入'];
+      var nonTrans=allTxs.filter(function(t){return t.category!=='轉帳'&&_skChartCats.indexOf(t.category)<0;});
       var pts=[],labels=[];
       var prefix=today.slice(0,7);
       var yr=parseInt(prefix),mo=parseInt(prefix.slice(5,7))-1;
@@ -4218,7 +4215,8 @@ function renderChart(period){
       // If no snapshot data except current month, fallback to transaction-based
       if(pts.length<=1){
         api('GET','/api/transactions').then(function(allTxs){
-          var nonTrans=allTxs.filter(function(t){return t.category!=='轉帳';});
+          var _skC4=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額','貸款撥入'];
+          var nonTrans=allTxs.filter(function(t){return t.category!=='轉帳'&&_skC4.indexOf(t.category)<0;});
           var allMs=nonTrans.map(function(t){return t.date.slice(0,7);}).sort();
           var firstM=allMs.length?allMs[0]:todayM;
           if(chartPeriod==='全'&&firstM<startM) startM=firstM;
