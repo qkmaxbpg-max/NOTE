@@ -168,106 +168,9 @@ var CCYS=[
 ];
 var _fxCache={};
 
-// ── Account Icons (Bank / E-Wallet / Broker) ──
-// Silhouette SVG logos inside a 32×32 viewBox, white on brand-color bg
-var ACCT_ICONS={
-  // ── Taiwan Banks (silhouette logos) ──
-  '中信':  {bg:'#002855',svg:'<path d="M11 8v16h3V8h-3zm7 0v16h3V8h-3z" fill="#fff"/><path d="M13 14h6v3h-6z" fill="#fff"/>'},
-  '國泰':  {bg:'#006847',svg:'<path d="M16 5c-1 0-2 1-3 3-.8 1.5-1.2 3.5-1.2 5.5 0 4 1.8 7.5 4.2 7.5s4.2-3.5 4.2-7.5c0-2-.4-4-1.2-5.5-1-2-2-3-3-3z" fill="#fff"/><path d="M16 22v4" stroke="#fff" stroke-width="2"/><path d="M12 26h8" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>'},
-  '台新':  {bg:'#00694B',svg:'<path d="M10 10c3-1 6 2 6 6s3 7 6 6" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M10 16c3-1 6 2 6 6" stroke="#fff" stroke-width="3" fill="none" stroke-linecap="round"/>'},
-  '玉山':  {bg:'#006B38',svg:'<path d="M16 5L6 25h20L16 5z" fill="#fff" opacity=".3"/><path d="M16 9L9 25h14L16 9z" fill="#fff" opacity=".5"/><path d="M16 13l-5 12h10l-5-12z" fill="#fff"/>'},
-  '富邦':  {bg:'#003C71',svg:'<circle cx="16" cy="12" r="5" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M16 17v8M11 21h10" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>'},
-  '永豐':  {bg:'#C8102E',svg:'<circle cx="16" cy="16" r="9" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M11 16h10M16 11v10" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'},
-  '第一':  {bg:'#005CAF',svg:'<rect x="12" y="6" width="8" height="20" rx="2" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M14 10h4M14 22h4" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/><path d="M16 10v12" stroke="#fff" stroke-width="2"/>'},
-  '華南':  {bg:'#00A0E9',svg:'<path d="M6 24h20M10 24V14l6-6 6 6v10" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="13" y="17" width="6" height="7" rx="1" fill="#fff"/>'},
-  '彰銀':  {bg:'#1B3D6D',svg:'<circle cx="16" cy="16" r="9" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M12 12l4 4-4 4M17 12h4M17 16h4M17 20h4" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>'},
-  '合庫':  {bg:'#0072BC',svg:'<path d="M8 26V14l8-8 8 8v12" stroke="#fff" stroke-width="2.5" fill="none" stroke-linejoin="round"/><path d="M8 14h16" stroke="#fff" stroke-width="2"/><rect x="12" y="18" width="3" height="6" rx=".5" fill="#fff"/><rect x="17" y="18" width="3" height="6" rx=".5" fill="#fff"/>'},
-  '兆豐':  {bg:'#003087',svg:'<circle cx="16" cy="16" r="9" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M10 16h12M16 10v12" stroke="#fff" stroke-width="2"/><circle cx="16" cy="16" r="3" fill="#fff"/>'},
-  '台企':  {bg:'#008C99',svg:'<path d="M8 24h16M10 24V12h12v12M16 8v4M12 16h8M12 20h8" stroke="#fff" stroke-width="2" stroke-linecap="round" fill="none"/>'},
-  '土地':  {bg:'#00703C',svg:'<path d="M16 6v14M12 10c0-3 8-3 8 0M10 14c0-4 12-4 12 0M8 18c0-4 16-4 16 0" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M7 24h18M16 20v4" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'},
-  '土銀':  {bg:'#00703C',svg:'<path d="M16 6v14M12 10c0-3 8-3 8 0M10 14c0-4 12-4 12 0M8 18c0-4 16-4 16 0" stroke="#fff" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M7 24h18M16 20v4" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'},
-  '台銀':  {bg:'#1C4587',svg:'<path d="M8 25h16M10 25V13h12v12" stroke="#fff" stroke-width="2" fill="none"/><path d="M16 7l8 6H8l8-6z" fill="#fff"/><rect x="12" y="16" width="2.5" height="7" rx=".5" fill="#fff"/><rect x="17.5" y="16" width="2.5" height="7" rx=".5" fill="#fff"/>'},
-  '臺銀':  {bg:'#1C4587',svg:'<path d="M8 25h16M10 25V13h12v12" stroke="#fff" stroke-width="2" fill="none"/><path d="M16 7l8 6H8l8-6z" fill="#fff"/><rect x="12" y="16" width="2.5" height="7" rx=".5" fill="#fff"/><rect x="17.5" y="16" width="2.5" height="7" rx=".5" fill="#fff"/>'},
-  '郵局':  {bg:'#006633',svg:'<rect x="7" y="11" width="18" height="12" rx="2" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M7 13l9 6 9-6" stroke="#fff" stroke-width="2" fill="none" stroke-linejoin="round"/>'},
-  '中華郵政':{bg:'#006633',svg:'<rect x="7" y="11" width="18" height="12" rx="2" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M7 13l9 6 9-6" stroke="#fff" stroke-width="2" fill="none" stroke-linejoin="round"/>'},
-  '聯邦':  {bg:'#C41230',svg:'<path d="M16 7l9 9-9 9-9-9 9-9z" fill="none" stroke="#fff" stroke-width="2.5"/><circle cx="16" cy="16" r="4" fill="#fff"/>'},
-  '遠東':  {bg:'#E31937',svg:'<path d="M8 10h16v4H8zM10 14v10h12V14" stroke="#fff" stroke-width="2" fill="none"/><path d="M14 18h4v6h-4z" fill="#fff"/>'},
-  '星展':  {bg:'#D32011',svg:'<polygon points="16,6 18.5,12 25,12 20,16.5 22,23 16,19 10,23 12,16.5 7,12 13.5,12" fill="#fff"/>'},
-  '渣打':  {bg:'#0E6E37',svg:'<circle cx="16" cy="16" r="10" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M16 8v16M10 12l6 4-6 4M22 12l-6 4 6 4" stroke="#fff" stroke-width="1.5" fill="none"/>'},
-  '匯豐':  {bg:'#DB0011',svg:'<path d="M7 10h8v5h-8zM17 10h8v5h-8zM7 17h8v5h-8zM17 17h8v5h-8z" fill="#fff"/><path d="M15 10v12M7 16h18" stroke="#DB0011" stroke-width="2"/>'},
-  '花旗':  {bg:'#003B70',svg:'<circle cx="16" cy="16" r="10" fill="none" stroke="#fff" stroke-width="2"/><path d="M8 12h16M8 16h16M8 20h16" stroke="#fff" stroke-width="1.5"/><path d="M16 6v20" stroke="#fff" stroke-width="1.5"/>'},
-  '凱基':  {bg:'#003DA5',svg:'<path d="M8 8h7v16H8zM17 8h7v16h-7z" fill="none" stroke="#fff" stroke-width="2" rx="1"/><path d="M11.5 12v8M20.5 12v8" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>'},
-  '元大':  {bg:'#1A1A6C',svg:'<circle cx="16" cy="16" r="10" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M11 20l5-8 5 8" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="16" cy="12" r="1.5" fill="#fff"/>'},
-  '日盛':  {bg:'#F58220',svg:'<circle cx="16" cy="14" r="6" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M16 8V5M22 14h3M10 14H7M20.2 9.8l2-2M11.8 9.8l-2-2" stroke="#fff" stroke-width="2" stroke-linecap="round"/><path d="M10 22h12" stroke="#fff" stroke-width="2.5" stroke-linecap="round"/>'},
-  '陽信':  {bg:'#F4A200',svg:'<circle cx="16" cy="14" r="5" fill="#fff"/><path d="M16 9V6M22 14h3M10 14H7M20.5 10l2-2M11.5 10l-2-2M20.5 18l2 2M11.5 18l-2 2" stroke="#fff" stroke-width="2" stroke-linecap="round"/><path d="M10 24h12" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'},
-  '新光':  {bg:'#E31937',svg:'<path d="M16 6l2 6h6l-5 4 2 6-5-4-5 4 2-6-5-4h6z" fill="#fff"/><path d="M10 26h12" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'},
-  '高雄':  {bg:'#0072BC',svg:'<path d="M16 6l10 8H6l10-8z" fill="#fff"/><path d="M8 14v11h16V14" stroke="#fff" stroke-width="2" fill="none"/><rect x="13" y="18" width="6" height="7" rx="1" fill="#fff"/>'},
-  '台中':  {bg:'#00703C',svg:'<circle cx="16" cy="16" r="10" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M12 11v10M16 9v14M20 11v10" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'},
-  '板信':  {bg:'#005BAA',svg:'<rect x="7" y="8" width="18" height="16" rx="3" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M12 14h8M12 18h5" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'},
-  '安泰':  {bg:'#E21F26',svg:'<path d="M16 6l10 10-10 10L6 16 16 6z" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M12 16h8M16 12v8" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'},
-  '京城':  {bg:'#7B2D26',svg:'<path d="M16 6l10 8H6l10-8z" fill="#fff" opacity=".8"/><path d="M8 14v12h16V14" stroke="#fff" stroke-width="2" fill="none"/><path d="M12 18h8M12 22h8" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>'},
-  '上海':  {bg:'#003DA5',svg:'<path d="M10 8v16h12V8H10z" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M14 8v16M10 14h12M10 20h12" stroke="#fff" stroke-width="1.5"/>'},
-  '瑞興':  {bg:'#003DA5',svg:'<circle cx="16" cy="16" r="10" fill="none" stroke="#fff" stroke-width="2.5"/><path d="M12 12h8v8h-8z" fill="#fff" opacity=".6"/><circle cx="16" cy="16" r="3" fill="#fff"/>'},
-
-  // ── E-Wallets ──
-  'LINE Pay':{bg:'#06C755',svg:'<text x="16" y="17.5" font-size="10" font-weight="900" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="Arial Black,sans-serif" letter-spacing=".3">LINE</text>'},
-  'Apple Pay':{bg:'#000',svg:'<path d="M20.4 11.3c-.1.1-1.8 1-1.8 3.2 0 2.5 2.2 3.4 2.2 3.4 0 .1-.3 1.2-1.1 2.3-.7 1-1.4 2-2.5 2s-1.4-.6-2.7-.6-1.6.7-2.6.7-1.7-.9-2.5-2.1C8.2 18.5 7.4 16 7.4 13.7c0-3.5 2.3-5.3 4.5-5.3 1.2 0 2.2.8 2.9.8.7 0 1.8-.8 3.2-.8.5 0 2.4.1 3.6 1.5l-1.2.4zM16.7 6.6c.6-.7 1-1.6 1-2.6 0-.1 0-.3 0-.4-.9 0-2 .6-2.7 1.4-.5.6-1 1.6-1 2.5 0 .2 0 .3 0 .4.1 0 .2 0 .3 0 .9 0 1.8-.6 2.4-1.3z" fill="#fff"/>'},
-  '街口':    {bg:'#00C853',svg:'<rect x="8" y="8" width="16" height="16" rx="3" fill="#fff" opacity=".15"/><text x="16" y="17.5" font-size="16" font-weight="900" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">街</text>'},
-  '街口支付': {bg:'#00C853',svg:'<rect x="8" y="8" width="16" height="16" rx="3" fill="#fff" opacity=".15"/><text x="16" y="17.5" font-size="16" font-weight="900" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">街</text>'},
-  '微信':    {bg:'#07C160',svg:'<path d="M12.5 10C9.5 10 7 12 7 14.5c0 1.4.7 2.7 1.9 3.6l-.5 1.5 1.8-1c.7.2 1.5.4 2.3.4.2 0 .5 0 .7 0-.2-.5-.3-1-.3-1.5 0-3 2.8-5.4 6.1-5.4.2 0 .5 0 .7 0C19.2 11.4 16.2 10 12.5 10z" fill="#fff"/><path d="M25 17c0-2.3-2.3-4.2-5.2-4.2S14.6 14.7 14.6 17s2.3 4.2 5.2 4.2c.6 0 1.2-.1 1.8-.3l1.4.8-.4-1.2C24.1 19.5 25 18.3 25 17z" fill="#fff"/><circle cx="11" cy="14" r=".9" fill="#07C160"/><circle cx="14" cy="14" r=".9" fill="#07C160"/><circle cx="18.2" cy="16.5" r=".7" fill="#07C160"/><circle cx="21" cy="16.5" r=".7" fill="#07C160"/>'},
-  '微信錢包': {bg:'#07C160',svg:'<path d="M12.5 10C9.5 10 7 12 7 14.5c0 1.4.7 2.7 1.9 3.6l-.5 1.5 1.8-1c.7.2 1.5.4 2.3.4.2 0 .5 0 .7 0-.2-.5-.3-1-.3-1.5 0-3 2.8-5.4 6.1-5.4.2 0 .5 0 .7 0C19.2 11.4 16.2 10 12.5 10z" fill="#fff"/><path d="M25 17c0-2.3-2.3-4.2-5.2-4.2S14.6 14.7 14.6 17s2.3 4.2 5.2 4.2c.6 0 1.2-.1 1.8-.3l1.4.8-.4-1.2C24.1 19.5 25 18.3 25 17z" fill="#fff"/><circle cx="11" cy="14" r=".9" fill="#07C160"/><circle cx="14" cy="14" r=".9" fill="#07C160"/><circle cx="18.2" cy="16.5" r=".7" fill="#07C160"/><circle cx="21" cy="16.5" r=".7" fill="#07C160"/>'},
-  '支付寶':  {bg:'#1677FF',svg:'<rect x="7" y="8" width="18" height="16" rx="3" fill="#fff" opacity=".12"/><text x="16" y="17.5" font-size="16" font-weight="900" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="sans-serif">支</text>'},
-  'Paypal':  {bg:'#003087',svg:'<path d="M20.1 9.2c.5-.6.8-1.4.8-2.4 0-2.8-2.3-3.8-5.1-3.8h-5c-.4 0-.7.3-.8.6L7.6 18.2c0 .3.2.6.5.6h3.5l.9-5.5-.0.2c.1-.4.4-.6.8-.6h1.6c3.2 0 5.7-1.3 6.4-5 0-.2.1-.4.1-.6.2-1.4 0-2.3-.8-3.1z" fill="#fff" transform="translate(1,5) scale(.85)"/><path d="M21.8 11.3c-.7 3.8-3.2 5-6.4 5h-1.6c-.4 0-.7.3-.8.6l-.8 5.3c0 .3.2.5.5.5h3c.3 0 .6-.2.7-.5l.7-4.5c.1-.3.4-.5.7-.5h.4c3 0 5.3-1.2 6-4.7.3-1.4.1-2.6-.6-3.4" fill="#fff" opacity=".6" transform="translate(1,5) scale(.85)"/>'},
-  'PayPal':  {bg:'#003087',svg:'<path d="M20.1 9.2c.5-.6.8-1.4.8-2.4 0-2.8-2.3-3.8-5.1-3.8h-5c-.4 0-.7.3-.8.6L7.6 18.2c0 .3.2.6.5.6h3.5l.9-5.5-.0.2c.1-.4.4-.6.8-.6h1.6c3.2 0 5.7-1.3 6.4-5 0-.2.1-.4.1-.6.2-1.4 0-2.3-.8-3.1z" fill="#fff" transform="translate(1,5) scale(.85)"/><path d="M21.8 11.3c-.7 3.8-3.2 5-6.4 5h-1.6c-.4 0-.7.3-.8.6l-.8 5.3c0 .3.2.5.5.5h3c.3 0 .6-.2.7-.5l.7-4.5c.1-.3.4-.5.7-.5h.4c3 0 5.3-1.2 6-4.7.3-1.4.1-2.6-.6-3.4" fill="#fff" opacity=".6" transform="translate(1,5) scale(.85)"/>'},
-  '眾安':    {bg:'#E8383D',svg:'<circle cx="16" cy="16" r="9.5" fill="none" stroke="#fff" stroke-width="2"/><text x="16" y="17.5" font-size="16" font-weight="900" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="Arial,sans-serif">Z</text>'},
-  '眾安銀行': {bg:'#E8383D',svg:'<circle cx="16" cy="16" r="9.5" fill="none" stroke="#fff" stroke-width="2"/><text x="16" y="17.5" font-size="16" font-weight="900" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="Arial,sans-serif">Z</text>'},
-  '悠遊付':  {bg:'#00AEEF',svg:'<circle cx="16" cy="16" r="10" fill="#fff" opacity=".15"/><path d="M10 13c2 4 4 5 6 5s4-1 6-5" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round"/><circle cx="16" cy="17" r="2.5" fill="#fff"/><path d="M12 24h8" stroke="#fff" stroke-width="2" stroke-linecap="round"/>'},
-  'icash':   {bg:'#FF6B00',svg:'<text x="16" y="17" font-size="11" font-weight="900" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="Arial,sans-serif" letter-spacing="-.5">iCash</text>'},
-  'Samsung Pay':{bg:'#1428A0',svg:'<text x="16" y="17" font-size="17" font-weight="900" fill="#fff" text-anchor="middle" dominant-baseline="central" font-family="Arial,sans-serif">S</text>'},
-  'Google Pay':{bg:'#fff',svg:'<path d="M23.5 16.3c0-.8-.1-1.4-.2-2H16v3.7h4.2c-.2 1-1 2.5-2.8 3.5l4.3 3.3c2.5-2.3 4-5.7 4-8.5z" fill="#4285F4" transform="translate(-1,-1) scale(.9)"/><path d="M16 26c3.2 0 5.9-1.1 7.9-2.9l-4.3-3.3c-1 .7-2.4 1.2-3.6 1.2-2.8 0-5.2-1.9-6-4.4l-4.4 3.4c2 4 6.1 6.7 10.4 6.7z" fill="#34A853" transform="translate(-1,-1) scale(.9)"/><path d="M10 16.5c-.2-.7-.4-1.5-.4-2.3s.1-1.6.4-2.3L5.6 8.5C4.6 10.4 4 12.6 4 14.9s.6 4.5 1.6 6.4l4.4-3.4z" fill="#FBBC05" transform="translate(-1,-1) scale(.9)"/><path d="M16 8.3c1.6 0 3 .5 4.1 1.6l3.1-3.1C21.2 5 18.8 4 16 4 11.7 4 8 6.7 6 10.7l4.4 3.4c.8-2.5 3.2-4.4 6-4.4z" fill="#EA4335" transform="translate(-1,-1) scale(.9)"/>'},
-
-  // ── Crypto ──
-  'Bitcoin': {bg:'#F7931A',svg:'<path d="M19 10c0-2-2-2.5-4-2.7V5h-1.5v2.2H12V5h-1.5v2.2H8v2h1.5c.5 0 .7.2.7.5v6.6c0 .3-.2.5-.7.5H8l-.5 2h2.8V21H12v-2.2h1.5V21H15v-2.3c2.5-.2 4-.9 4-3 0-1.7-1-2.4-2.2-2.7 1-.4 2.2-1 2.2-3zm-2.5 5.5c0 1.5-2.5 1.5-3.5 1.5v-3c1 0 3.5-.1 3.5 1.5zM13 10v2.7c.8 0 3 .1 3-1.3 0-1.5-2.2-1.4-3-1.4z" fill="#fff"/>'},
-  'Ethereum':{bg:'#627EEA',svg:'<path d="M16 4l-8 12.5L16 20l8-3.5L16 4z" fill="#fff" opacity=".6"/><path d="M16 20l-8-3.5L16 28l8-11.5L16 20z" fill="#fff"/><path d="M16 4v16l8-3.5L16 4z" fill="#fff" opacity=".3"/>'}
-};
-
-// E-wallet sub-types for selection list
-var EWALLET_TYPES=[
-  {name:'LINE Pay',icon:'LINE Pay'},
-  {name:'Apple Pay',icon:'Apple Pay'},
-  {name:'街口支付',icon:'街口支付'},
-  {name:'微信錢包',icon:'微信錢包'},
-  {name:'支付寶',icon:'支付寶'},
-  {name:'眾安銀行',icon:'眾安銀行'},
-  {name:'Paypal',icon:'Paypal'},
-  {name:'悠遊付',icon:'悠遊付'},
-  {name:'Google Pay',icon:'Google Pay'},
-  {name:'Samsung Pay',icon:'Samsung Pay'},
-  {name:'其他電子錢包',icon:null}
-];
-
-function getAcctIconSvg(name){
-  // exact match first
-  if(ACCT_ICONS[name]) return ACCT_ICONS[name];
-  // partial match (e.g. "國泰世華" matches "國泰")
-  var keys=Object.keys(ACCT_ICONS);
-  for(var i=0;i<keys.length;i++){
-    if(name.indexOf(keys[i])>=0) return ACCT_ICONS[keys[i]];
-  }
-  return null;
-}
-
-function acctIconHtml(name,type,dot){
-  var ico=getAcctIconSvg(name);
-  if(ico){
-    return '<div class="acct-ico" style="background:'+ico.bg+'"><svg viewBox="0 0 32 32" width="28" height="28">'+ico.svg+'</svg></div>';
-  }
-  // fallback: colored dot
-  return '<div class="sdot" style="background:'+(dot||'#1db954')+'"></div>';
-}
 
 var L3_TYPES={
-  liquid:['現金','電子錢包','其他'],
+  liquid:['現金','銀行','電子錢包','其他'],
   invest:['股票','加密貨幣','貴金屬','其他'],
   fixed:['房產','汽車','其他固定資產'],
   recv:['應收款'],
@@ -1362,7 +1265,7 @@ function buildL3Card(key,it,idx){
     valStr=fmtAmt(cvt(curVal));
   }
   el.innerHTML=
-    acctIconHtml(it.name,it.type,it.dot)
+    '<div class="sdot" style="background:'+it.dot+'"></div>'
     +'<div class="a3-info"><div class="a3-name">'+it.name+'</div>'
     +'<div class="a3-type">'+it.type+(it.desc?' · '+it.desc:'')+'</div></div>'
     +'<div class="a3-right"><div class="'+valCls+'">'+valStr+'</div>'+chgHtml+'</div>';
@@ -1571,54 +1474,23 @@ function submitRefi(){
 }
 
 // add account
-function _renderStepIcon(name){
-  var ico=getAcctIconSvg(name);
-  if(ico) return '<div class="acct-ico" style="background:'+ico.bg+';width:36px;height:36px;border-radius:9px"><svg viewBox="0 0 32 32" width="32" height="32">'+ico.svg+'</svg></div>';
-  return '';
-}
 function openAddAcct(key){
   st.addL1=key;
   var titles={liquid:'流動資金',invest:'投資',fixed:'固定資產',recv:'應收款',debt:'負債'};
   $('add-s2-ttl').textContent=titles[key]+' — 選擇帳戶類型';
   var list=$('add-s2-list');list.innerHTML='';
-  // clean up ewallet back button if present
-  var oldBack=list.parentNode.querySelector('.step-back');if(oldBack&&oldBack!==list)oldBack.remove();
   L3_TYPES[key].forEach(function(t){
     var div=document.createElement('div');div.className='step-item';
     div.innerHTML=t+'<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg>';
-    div.onclick=function(){
-      if(t==='電子錢包'){showEwalletList();return;}
-      addGoS3(t);
-    };
+    div.onclick=function(){addGoS3(t);};
     list.appendChild(div);
   });
   addShowStep(2);$('m-addacct').classList.add('on');
 }
-function showEwalletList(){
-  $('add-s2-ttl').textContent='電子錢包';
-  var list=$('add-s2-list');list.innerHTML='';
-  // back button
-  var back=document.createElement('div');back.className='step-back';
-  back.innerHTML='<svg viewBox="0 0 16 16"><path d="M10 4L6 8l4 4"/></svg>返回';
-  back.onclick=function(){openAddAcct(st.addL1);};
-  list.parentNode.insertBefore(back,list);
-  EWALLET_TYPES.forEach(function(w){
-    var div=document.createElement('div');div.className='step-item';
-    var icoHtml=w.icon?_renderStepIcon(w.icon):'<div class="acct-ico" style="background:var(--bg5);width:36px;height:36px;border-radius:9px"><svg viewBox="0 0 32 32" width="32" height="32"><circle cx="10" cy="16" r="2" fill="#1db954"/><circle cx="16" cy="16" r="2" fill="#1db954"/><circle cx="22" cy="16" r="2" fill="#1db954"/></svg></div>';
-    div.innerHTML=icoHtml+'<span style="flex:1;margin-left:4px">'+w.name+'</span><svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg>';
-    div.onclick=function(){
-      // remove back button
-      var bk=list.parentNode.querySelector('.step-back');if(bk&&bk!==list)bk.remove();
-      st._ewalletPreName=w.name==='其他電子錢包'?'':w.name;
-      addGoS3('電子錢包');
-    };
-    list.appendChild(div);
-  });
-}
 function addGoS2(key){st.addL1=key;openAddAcct(key);}
 function addGoS3(type){
   st.addL3=type;$('add-s3-ttl').textContent=type;
-  $('add-name').value=st._ewalletPreName||'';st._ewalletPreName=null;
+  $('add-name').value='';
   $('add-bal').value='';$('add-desc').value='';
   $('add-stat-tog').classList.add('on');
   var isStock=(type==='股票');
@@ -2850,6 +2722,10 @@ function getAcctName(id){
   for(var i=0;i<allAccounts.length;i++){if(allAccounts[i].id===id)return allAccounts[i].name;}
   return '';
 }
+function isStockAcct(id){
+  for(var i=0;i<allAccounts.length;i++){if(allAccounts[i].id===id){var s=allAccounts[i].sk;return !!(s&&s.ticker);}}
+  return false;
+}
 
 function renderTx(){
   var days=['日','一','二','三','四','五','六'],html='';
@@ -2867,10 +2743,9 @@ function renderTx(){
       }
     }
   });
-  // Pair stock buy transactions: 買入股票/初始餘額 on stock acct + 購入股票 on source acct
-  var stockBuyCats=['買入股票','初始餘額'];
+  // Pair stock buy transactions: 買入股票/初始餘額(stock only) on stock acct + 購入股票 on source acct
   txs.forEach(function(t,i){
-    if(stockBuyCats.indexOf(t.cat)>=0&&!skipIdx[i]){
+    if((t.cat==='買入股票'||(t.cat==='初始餘額'&&isStockAcct(t.account_id)))&&!skipIdx[i]){
       var ticker=t.note?(t.note.match(/^([A-Za-z0-9]+)/)||[])[1]:'';
       if(ticker) ticker=ticker.toUpperCase();
       var acctName=getAcctName(t.account_id).toUpperCase();
@@ -2917,7 +2792,7 @@ function renderTx(){
     groups[date].forEach(function(t){
       var idx=txs.indexOf(t),pos=t.amt>=0;
       var isTransfer=(t.cat==='轉帳'&&t._transferTo);
-      var isStockBuy=((t.cat==='買入股票'||t.cat==='初始餘額')&&t.account_id);
+      var isStockBuy=((t.cat==='買入股票'||(t.cat==='初始餘額'&&isStockAcct(t.account_id)))&&t.account_id);
       var isStockSell=(t.cat==='賣出股票'&&t.account_id);
       if(isTransfer){
         var fromName=getAcctName(t.account_id)||'?';
@@ -2998,7 +2873,8 @@ function renderTx(){
   if(!html)html='<div style="text-align:center;color:var(--fg3);padding:48px 0;font-size:14px">本月尚無記錄</div>';
   $('tx-wrap').innerHTML=html;
   st.expandedTx=null;
-  var nonTransfer=txs.filter(function(t,i){return t.cat!=='轉帳'&&!skipIdx[i];});
+  var _stockCats=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
+  var nonTransfer=txs.filter(function(t,i){return t.cat!=='轉帳'&&!skipIdx[i]&&_stockCats.indexOf(t.cat)<0;});
   var inc=nonTransfer.filter(function(t){return t.amt>0;}).reduce(function(s,t){return s+t.amt;},0);
   var exp=nonTransfer.filter(function(t){return t.amt<0;}).reduce(function(s,t){return s+t.amt;},0);
   var bal=inc+exp;
@@ -3031,7 +2907,8 @@ function delTransferPair(ev,idx){
 
 // ── Analysis page (dynamic) ──
 function renderAnalysis(){
-  var nt=txs.filter(function(t){return t.cat!=='轉帳';});
+  var _skCats=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
+  var nt=txs.filter(function(t){return t.cat!=='轉帳'&&_skCats.indexOf(t.cat)<0;});
   var inc=nt.filter(function(t){return t.amt>0;}).reduce(function(s,t){return s+t.amt;},0);
   var exp=nt.filter(function(t){return t.amt<0;}).reduce(function(s,t){return s+t.amt;},0);
   var bal=inc+exp;
@@ -3052,7 +2929,8 @@ function renderAnalysis(){
 }
 
 function renderDonut(type){
-  var filtered=type==='exp'?txs.filter(function(t){return t.amt<0&&t.cat!=='轉帳';}):txs.filter(function(t){return t.amt>0&&t.cat!=='轉帳';});
+  var _skCats=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
+  var filtered=type==='exp'?txs.filter(function(t){return t.amt<0&&t.cat!=='轉帳'&&_skCats.indexOf(t.cat)<0;}):txs.filter(function(t){return t.amt>0&&t.cat!=='轉帳'&&_skCats.indexOf(t.cat)<0;});
   var total=filtered.reduce(function(s,t){return s+Math.abs(t.amt);},0);
 
   // Group by category
@@ -7038,7 +6916,8 @@ function renderTxFiltered(list){
   if(!html)html='<div style="text-align:center;color:var(--fg3);padding:48px 0;font-size:14px">無符合條件的記錄</div>';
   $('tx-wrap').innerHTML=html;
   // Update summary from filtered data
-  var nt=list.filter(function(t){return t.cat!=='轉帳';});
+  var _skCats2=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
+  var nt=list.filter(function(t){return t.cat!=='轉帳'&&_skCats2.indexOf(t.cat)<0;});
   var inc=nt.filter(function(t){return t.amt>0;}).reduce(function(s,t){return s+t.amt;},0);
   var exp=nt.filter(function(t){return t.amt<0;}).reduce(function(s,t){return s+t.amt;},0);
   var bal=inc+exp;
@@ -7101,7 +6980,8 @@ function _loadAnlPeriodData(period){
 
 function _renderAnlPeriod(period,range){
   var txData=_anlTxCache||[];
-  var nt=txData.filter(function(t){return t.cat!=='轉帳';});
+  var _skC=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
+  var nt=txData.filter(function(t){return t.cat!=='轉帳'&&_skC.indexOf(t.cat)<0;});
   var inc=nt.filter(function(t){return t.amt>0;}).reduce(function(s,t){return s+t.amt;},0);
   var exp=nt.filter(function(t){return t.amt<0;}).reduce(function(s,t){return s+t.amt;},0);
   var bal=inc+exp;
@@ -7147,7 +7027,8 @@ function _renderAnlPeriod(period,range){
 }
 
 function _renderDonutPeriod(type,txData){
-  var filtered=type==='exp'?txData.filter(function(t){return t.amt<0&&t.cat!=='轉帳';}):txData.filter(function(t){return t.amt>0&&t.cat!=='轉帳';});
+  var _skC=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
+  var filtered=type==='exp'?txData.filter(function(t){return t.amt<0&&t.cat!=='轉帳'&&_skC.indexOf(t.cat)<0;}):txData.filter(function(t){return t.amt>0&&t.cat!=='轉帳'&&_skC.indexOf(t.cat)<0;});
   var total=filtered.reduce(function(s,t){return s+Math.abs(t.amt);},0);
   var catMap={};
   filtered.forEach(function(t){
@@ -7184,7 +7065,8 @@ function _renderMonthlyBarChart(txData){
   var labels=[];
   for(var m=0;m<12;m++){
     var prefix=st.curYear+'-'+MONTHS[m];
-    var mTxs=txData.filter(function(t){return t.date.indexOf(prefix)===0&&t.amt<0&&t.cat!=='轉帳';});
+    var _skC=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
+    var mTxs=txData.filter(function(t){return t.date.indexOf(prefix)===0&&t.amt<0&&t.cat!=='轉帳'&&_skC.indexOf(t.cat)<0;});
     var total=mTxs.reduce(function(s,t){return s+Math.abs(t.amt);},0);
     monthlyExp.push(total);
     labels.push((m+1)+'月');
@@ -7198,7 +7080,8 @@ function _renderQuarterBarChart(txData,range){
   var labels=[];
   for(var m=range.startM;m<=range.endM;m++){
     var prefix=st.curYear+'-'+MONTHS[m];
-    var mTxs=txData.filter(function(t){return t.date.indexOf(prefix)===0&&t.amt<0&&t.cat!=='轉帳';});
+    var _skC2=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
+    var mTxs=txData.filter(function(t){return t.date.indexOf(prefix)===0&&t.amt<0&&t.cat!=='轉帳'&&_skC2.indexOf(t.cat)<0;});
     var total=mTxs.reduce(function(s,t){return s+Math.abs(t.amt);},0);
     monthlyExp.push(total);
     labels.push((m+1)+'月');
@@ -7265,7 +7148,8 @@ renderAnalysis=function(){
   if(barWrap) barWrap.style.display='none';
   _origRenderAnalysis();
   // restore month labels after original render
-  var nt=txs.filter(function(t){return t.cat!=='轉帳';});
+  var _skC3=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
+  var nt=txs.filter(function(t){return t.cat!=='轉帳'&&_skC3.indexOf(t.cat)<0;});
   var incV=nt.filter(function(t){return t.amt>0;}).reduce(function(s,t){return s+t.amt;},0);
   var expV=nt.filter(function(t){return t.amt<0;}).reduce(function(s,t){return s+t.amt;},0);
   if(expLbl) expLbl.innerHTML='月支出 <b id="anl-exp" style="color:#fff;font-weight:600">'+fmtN(cvt(Math.abs(expV)))+'</b>';
