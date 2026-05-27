@@ -265,6 +265,8 @@ body.light .acct-add-btn:hover{background:rgba(0,0,0,.03)}
 .step-item:hover{border-color:var(--green);background:var(--gbg);color:var(--green)}
 .step-item svg{width:16px;height:16px;fill:none;stroke:var(--fg3);stroke-width:2;stroke-linecap:round}
 .step-item:hover svg{stroke:var(--green)}
+.step-back{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--fg2);cursor:pointer;margin-bottom:16px}
+.step-back svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
 .info-box{background:var(--bg2);border-radius:var(--rs);padding:12px 14px;margin-top:2px;border:1px solid var(--bg4)}
 .info-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--bg3)}
 .info-row:last-child{border-bottom:none}

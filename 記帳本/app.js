@@ -200,6 +200,7 @@ function $(id){return document.getElementById(id);}
 function toast(msg){var t=$('toast');t.textContent=msg;t.classList.add('on');setTimeout(function(){t.classList.remove('on');},2800);}
 function fmtN(n){return Math.abs(Math.round(n)).toLocaleString('zh-TW');}
 function fmtAmt(n){return(n<0?'－':'')+fmtN(n);}
+function fmtFee(n){n=Math.abs(n);if(n===0)return '0';if(n<1)return '1';return Math.round(n).toLocaleString('zh-TW');}
 function cvt(n){return st.ccy==='USD'?Math.round(n/st.fxRate):Math.round(n);}
 function ccySym(){return st.ccy==='USD'?'US$':'NT$';}
 function acctVal(it){return it.sk&&it.sk.shares!=null&&it.sk.curPrice!=null?Math.round(it.sk.shares*it.sk.curPrice*(it.sk.isUs?st.fxRate:1)):it.bal;}
@@ -1626,7 +1627,7 @@ function calcAddFee(){
   var mktVal=sh*curPrice;
   $('add-sub').textContent=ccyLabel+' '+Math.round(sub).toLocaleString();
   $('add-sub-hint').textContent=sh.toLocaleString()+' 股 × '+pr;
-  $('add-fee').textContent=ccyLabel+' '+Math.round(Math.abs(fee)).toLocaleString();
+  $('add-fee').textContent=ccyLabel+' '+fmtFee(fee);
   var cvtRow=$('add-paid-cvt-row');
   if(cvtRow){
     if(showCvt){
@@ -1998,7 +1999,7 @@ function calcEditStockFee(){
   var mktVal=sh*curPrice;
   $('edit-sub').textContent=ccyLabel+' '+Math.round(sub).toLocaleString();
   $('edit-sub-hint').textContent=sh.toLocaleString()+' 股 × '+pr;
-  $('edit-fee').textContent=ccyLabel+' '+Math.round(Math.abs(fee)).toLocaleString();
+  $('edit-fee').textContent=ccyLabel+' '+fmtFee(fee);
   $('edit-mkt-val').textContent=ccyLabel+' '+Math.round(mktVal).toLocaleString();
   $('edit-mkt-hint').textContent=sh.toLocaleString()+' 股 × '+curPrice;
   $('edit-fee-box').style.display='block';
@@ -2583,7 +2584,7 @@ function calcSkFee(){
   var mktVal=sh*curPrice;
   $('sk-sub').textContent=ccyLabel+' '+Math.round(sub).toLocaleString();
   $('sk-sub-hint').textContent=sh.toLocaleString()+' 股 × '+pr;
-  $('sk-fee').textContent=ccyLabel+' '+Math.round(Math.abs(fee)).toLocaleString();
+  $('sk-fee').textContent=ccyLabel+' '+fmtFee(fee);
   var cvtRow=$('s-paid-cvt-row');
   if(cvtRow){
     if(showCvt){
@@ -2613,7 +2614,7 @@ function calcTxBuyFee(){
   var ccyL=isUs?'US$':'NT$';
   $('txb-fee-sub').textContent=ccyL+' '+Math.round(sub).toLocaleString();
   $('txb-fee-sub-hint').textContent=sh.toLocaleString()+' 股 × '+pr;
-  $('txb-fee-fee').textContent=ccyL+' '+Math.round(Math.abs(fee)).toLocaleString();
+  $('txb-fee-fee').textContent=ccyL+' '+fmtFee(fee);
   var cvtRow=$('txb-fee-cvt-row');
   if(cvtRow){
     if(showCvt){
@@ -3554,7 +3555,7 @@ function calcSkiEditFee(txId,acctId){
   var sub=sh*pr,fee=amtNative-sub;
   var nSym=isUs?'US$':'NT$';
   $('ski-ed-sub-'+txId).textContent=nSym+' '+Math.round(sub).toLocaleString();
-  $('ski-ed-fee-'+txId).textContent=nSym+' '+Math.round(Math.abs(fee)).toLocaleString();
+  $('ski-ed-fee-'+txId).textContent=nSym+' '+fmtFee(fee);
   var cvtRow=$('ski-ed-cvt-row-'+txId);
   if(cvtRow){
     if(showCvt){
@@ -5377,6 +5378,7 @@ function _resRow(lbl,val,cls){return '<div class="calc-res-row"><span class="cal
 function renderCalcDca(){
   var html=_calcBackHtml();
   html+='<div class="calc-ttl"><span class="calc-ttl-ico">📊</span>定期定額計算</div>';
+  html+=_fld('dca-init','初始投入金額（選填）','number','0');
   html+=_fld('dca-amt','每月投入金額','number','10,000');
   html+=_fld('dca-rate','預期年化報酬率 (%)','number','8');
   html+=_fld('dca-years','投資年數','number','10');
@@ -5386,6 +5388,7 @@ function renderCalcDca(){
     +'<button class="calc-toggle-btn" onclick="_dcaIncMode(\'pct\')">百分比</button>'
     +'</div>';
   html+=_fld('dca-inc','每年增加金額','number','0');
+  html+=_fld('dca-cap','每月投入上限（選填，0=無上限）','number','0');
   html+='<button class="subbtn" onclick="calcDca()">計算</button>';
   html+='<div id="c-dca-result"></div>';
   html+=_calcHistHtml('dca');
@@ -5400,17 +5403,20 @@ function _dcaIncMode(m){
   else{btns[1].classList.add('on');var lbl2=document.getElementById('c-dca-inc').parentNode.querySelector('label');if(lbl2)lbl2.textContent='每年增加比例 (%)';}
 }
 function calcDca(){
+  var initAmt=parseFloat(document.getElementById('c-dca-init').value)||0;
   var monthly=parseFloat(document.getElementById('c-dca-amt').value)||0;
   var rate=(parseFloat(document.getElementById('c-dca-rate').value)||0)/100;
   var years=parseInt(document.getElementById('c-dca-years').value)||0;
   var inc=parseFloat(document.getElementById('c-dca-inc').value)||0;
+  var cap=parseFloat(document.getElementById('c-dca-cap').value)||0;
   if(!monthly||!years){toast('請填入每月金額與年數');return;}
   var monthlyRate=rate/12;
-  var total=0,invested=0,curMonthly=monthly;
+  var total=initAmt,invested=initAmt,curMonthly=monthly;
   for(var y=0;y<years;y++){
     if(y>0){
       if(_dcaIncType==='fixed')curMonthly+=inc;
       else curMonthly*=(1+inc/100);
+      if(cap>0&&curMonthly>cap)curMonthly=cap;
     }
     for(var m=0;m<12;m++){
       invested+=curMonthly;
@@ -5420,18 +5426,20 @@ function calcDca(){
   total=Math.round(total);invested=Math.round(invested);
   var gain=total-invested;
   var pct=invested>0?((gain/invested)*100).toFixed(2):'0';
-  var label=fmtN(monthly)+'/月 '+years+'年 '+rate*100+'%';
+  var label=(initAmt?fmtN(initAmt)+'+':'')+fmtN(monthly)+'/月 '+years+'年 '+rate*100+'%';
   var inputs={
-    'dca-amt':monthly,'dca-rate':rate*100,'dca-years':years,'dca-inc':inc,'dca-inc-type':_dcaIncType
+    'dca-init':initAmt,'dca-amt':monthly,'dca-rate':rate*100,'dca-years':years,'dca-inc':inc,'dca-inc-type':_dcaIncType,'dca-cap':cap
   };
   var results={total:total,invested:invested,gain:gain,pct:pct};
   saveCalcHistory('dca',inputs,results,label);
   var html='<div class="calc-result">';
   html+='<div class="calc-res-hero"><div class="calc-res-hero-lbl">最終資產</div><div class="calc-res-hero-val">'+fmtN(total)+'</div></div>';
+  if(initAmt>0)html+=_resRow('初始投入',fmtN(initAmt));
   html+=_resRow('總投入金額',fmtN(invested));
   html+=_resRow('投資報酬',fmtN(gain),gain>=0?'g':'r');
   html+=_resRow('報酬率',pct+'%',gain>=0?'g':'r');
   if(inc>0)html+=_resRow('最終月投金額',fmtN(Math.round(curMonthly)));
+  if(cap>0&&curMonthly>=cap)html+=_resRow('已達月投上限',fmtN(cap),'r');
   html+='</div>';
   document.getElementById('c-dca-result').innerHTML=html;
 }
@@ -5538,8 +5546,9 @@ function renderCalcPledge(){
   html+='</div>';
   html+='<div class="f2">';
   html+=_fld('ple-rate','年利率 (%)','number','2.5');
-  html+=_fld('ple-shares','持有股數','number','1000');
+  html+=_fld('ple-months','貸款期數（月）','number','12');
   html+='</div>';
+  html+=_fld('ple-shares','持有股數','number','1000');
   html+='<button class="subbtn" onclick="calcPledge()">計算</button>';
   html+='<div id="c-ple-result"></div>';
   html+=_calcHistHtml('pledge');
@@ -5550,23 +5559,26 @@ function calcPledge(){
   var ltv=(parseFloat(document.getElementById('c-ple-ltv').value)||0)/100;
   var maint=(parseFloat(document.getElementById('c-ple-maint').value)||0)/100;
   var rate=(parseFloat(document.getElementById('c-ple-rate').value)||0)/100;
+  var months=parseInt(document.getElementById('c-ple-months').value)||12;
   var shares=parseFloat(document.getElementById('c-ple-shares').value)||0;
   if(!val||!ltv){toast('請填入股票市值與貸款成數');return;}
   var maxLoan=Math.round(val*ltv);
   var monthlyInterest=Math.round(maxLoan*rate/12);
   var yearlyInterest=Math.round(maxLoan*rate);
+  var totalInterest=Math.round(maxLoan*rate*months/12);
   // margin call: when stock value drops to loan / maintenance ratio
   var marginVal=maint>0?Math.round(maxLoan/maint):0;
   var marginPrice=shares>0&&maint>0?Math.round(maxLoan/maint/shares*100)/100:0;
   var dropPct=val>0?((1-marginVal/val)*100).toFixed(1):'0';
   var label=fmtN(val)+' LTV '+ltv*100+'%';
-  var inputs={'ple-val':val,'ple-ltv':ltv*100,'ple-maint':maint*100,'ple-rate':rate*100,'ple-shares':shares};
-  var results={maxLoan:maxLoan,monthlyInterest:monthlyInterest,yearlyInterest:yearlyInterest,marginVal:marginVal,marginPrice:marginPrice};
+  var inputs={'ple-val':val,'ple-ltv':ltv*100,'ple-maint':maint*100,'ple-rate':rate*100,'ple-months':months,'ple-shares':shares};
+  var results={maxLoan:maxLoan,monthlyInterest:monthlyInterest,yearlyInterest:yearlyInterest,totalInterest:totalInterest,marginVal:marginVal,marginPrice:marginPrice};
   saveCalcHistory('pledge',inputs,results,label);
   var html='<div class="calc-result">';
   html+='<div class="calc-res-hero"><div class="calc-res-hero-lbl">最高可借金額</div><div class="calc-res-hero-val">'+fmtN(maxLoan)+'</div></div>';
   html+=_resRow('每月利息',fmtN(monthlyInterest));
   html+=_resRow('每年利息',fmtN(yearlyInterest));
+  html+=_resRow(months+'個月總利息',fmtN(totalInterest),'r');
   if(maint>0){
     html+=_resRow('追繳市值門檻',fmtN(marginVal),'r');
     if(marginPrice>0)html+=_resRow('追繳股價',marginPrice.toLocaleString(),'r');
@@ -5582,7 +5594,8 @@ function calcPledge(){
 function renderCalcCompound(){
   var html=_calcBackHtml();
   html+='<div class="calc-ttl"><span class="calc-ttl-ico">📈</span>複利計算</div>';
-  html+=_fld('cpd-principal','本金','number','100,000');
+  html+=_fld('cpd-principal','初始本金','number','100,000');
+  html+=_fld('cpd-monthly','每月追加投入（選填）','number','0');
   html+=_fld('cpd-rate','年利率 (%)','number','5');
   html+=_sel('cpd-freq','複利頻率',[
     {v:'12',t:'每月複利'},
@@ -5597,24 +5610,37 @@ function renderCalcCompound(){
 }
 function calcCompound(){
   var P=parseFloat(document.getElementById('c-cpd-principal').value)||0;
+  var pmt=parseFloat(document.getElementById('c-cpd-monthly').value)||0;
   var r=(parseFloat(document.getElementById('c-cpd-rate').value)||0)/100;
   var n=parseInt(document.getElementById('c-cpd-freq').value)||1;
   var t=parseFloat(document.getElementById('c-cpd-years').value)||0;
-  if(!P||!t){toast('請填入本金與年數');return;}
-  var FV=P*Math.pow(1+r/n,n*t);
-  FV=Math.round(FV);
-  var interest=FV-P;
+  if((!P&&!pmt)||!t){toast('請填入本金或每月投入與年數');return;}
+  var FV,totalInvested;
+  if(pmt>0){
+    // compound with monthly contributions — simulate month by month
+    var monthlyRate=r/12;
+    FV=P;totalInvested=P;
+    for(var m=0;m<t*12;m++){
+      FV=(FV+pmt)*(1+monthlyRate);
+      totalInvested+=pmt;
+    }
+    FV=Math.round(FV);totalInvested=Math.round(totalInvested);
+  } else {
+    FV=Math.round(P*Math.pow(1+r/n,n*t));
+    totalInvested=P;
+  }
+  var interest=FV-totalInvested;
   var effectiveRate=((Math.pow(1+r/n,n)-1)*100).toFixed(2);
-  var multiple=(FV/P).toFixed(2);
-  var freqNames={'12':'月複利','4':'季複利','1':'年複利'};
-  var label=fmtN(P)+' '+r*100+'% '+t+'年';
-  var inputs={'cpd-principal':P,'cpd-rate':r*100,'cpd-freq':n,'cpd-years':t};
-  var results={FV:FV,interest:interest,effectiveRate:effectiveRate,multiple:multiple};
+  var multiple=totalInvested>0?(FV/totalInvested).toFixed(2):'0';
+  var label=fmtN(P)+(pmt?'+'+fmtN(pmt)+'/月':'')+' '+r*100+'% '+t+'年';
+  var inputs={'cpd-principal':P,'cpd-monthly':pmt,'cpd-rate':r*100,'cpd-freq':n,'cpd-years':t};
+  var results={FV:FV,interest:interest,effectiveRate:effectiveRate,multiple:multiple,totalInvested:totalInvested};
   saveCalcHistory('compound',inputs,results,label);
   var html='<div class="calc-result">';
   html+='<div class="calc-res-hero"><div class="calc-res-hero-lbl">最終金額</div><div class="calc-res-hero-val">'+fmtN(FV)+'</div></div>';
-  html+=_resRow('本金',fmtN(P));
-  html+=_resRow('利息收入',fmtN(interest),'g');
+  html+=_resRow('總投入金額',fmtN(totalInvested));
+  if(pmt>0)html+=_resRow('初始本金',fmtN(P));
+  html+=_resRow('利息/報酬',fmtN(interest),'g');
   html+=_resRow('成長倍數',multiple+'x');
   html+=_resRow('有效年利率',effectiveRate+'%');
   html+='</div>';
