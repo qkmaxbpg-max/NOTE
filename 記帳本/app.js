@@ -5071,10 +5071,11 @@ function openLoanDetail(acctId){
     totalPay=Math.round(pmt*months);
     totalInt=totalPay-principal;
   }
-  var apr=calcLoanAPR(principal,pmt,months,loanFee);
   var startStr=ld.start_date||'—';
   var payDay=ld.pay_day||'—';
   var loanFee=ld._fee||0;
+  var apr=calcLoanAPR(principal,pmt,months,loanFee);
+  var totalCostAll=totalInt+loanFee;
 
   var h='<div class="mttl">'+acct.name+' 貸款詳情</div>';
   h+='<div class="info-box">';
@@ -5090,6 +5091,7 @@ function openLoanDetail(acctId){
   h+='<div class="info-row"><span class="info-lbl">總繳金額</span><span class="info-val">'+ccySym()+' '+fmtN(cvt(totalPay))+'</span></div>';
   h+='<div class="info-row"><span class="info-lbl">總利息</span><span class="info-val r">'+ccySym()+' '+fmtN(cvt(totalInt))+'</span></div>';
   if(loanFee>0) h+='<div class="info-row"><span class="info-lbl">開辦費</span><span class="info-val">'+ccySym()+' '+fmtN(cvt(loanFee))+'</span></div>';
+  if(loanFee>0) h+='<div class="info-row"><span class="info-lbl">總費用（利息+開辦費）</span><span class="info-val r">'+ccySym()+' '+fmtN(cvt(totalCostAll))+'</span></div>';
   h+='<div class="info-row" style="border-top:1px solid var(--bg4);padding-top:8px;margin-top:4px"><span class="info-lbl" style="font-weight:600">總費用率 APR</span><span class="info-val" style="font-weight:600">'+apr.toFixed(2)+'%</span></div>';
   h+='</div>';
   h+='<div style="text-align:center;padding:16px 0 4px">';
@@ -5528,18 +5530,18 @@ function calcLoan(){
     totalInterest=Math.round(P*i*n);
     totalPay=P+totalInterest;
   }
-  // APR calculation (if fee > 0, effective rate is higher)
+  // APR calculation (if fee > 0, effective rate is higher than stated)
   var apr=rAnnual;
-  if(fee>0&&type==='equal'){
+  if(fee>0){
     var netProceeds=P-fee;
-    // Newton's method to find APR
+    var pmtForAPR=monthlyFirst; // use first-period payment for IRR
     var guess=rAnnual/100/12;
     for(var iter=0;iter<100;iter++){
       var pv=0,dpv=0;
       for(var k=1;k<=n;k++){
         var disc=Math.pow(1+guess,k);
-        pv+=monthlyFirst/disc;
-        dpv-=k*monthlyFirst/Math.pow(1+guess,k+1);
+        pv+=pmtForAPR/disc;
+        dpv-=k*pmtForAPR/Math.pow(1+guess,k+1);
       }
       var diff=pv-netProceeds;
       if(Math.abs(diff)<0.01)break;
@@ -5548,6 +5550,7 @@ function calcLoan(){
     }
     apr=Math.round(guess*12*10000)/100;
   }
+  var totalCostAll=totalInterest+fee;
   var typeNames={equal:'本息均攤',principal:'本金均攤',interest:'只繳利息'};
   var label=fmtN(P)+' '+rAnnual+'% '+n+'期 '+typeNames[type];
   var inputs={'loan-amt':P,'loan-rate':rAnnual,'loan-months':n,'loan-type':type,'loan-fee':fee};
@@ -5557,9 +5560,9 @@ function calcLoan(){
   html+='<div class="calc-res-hero"><div class="calc-res-hero-lbl">每月還款</div><div class="calc-res-hero-val">'+fmtN(monthlyFirst)+'</div></div>';
   if(type==='principal')html+=_resRow('最後一期',fmtN(monthlyLast));
   html+=_resRow('總利息支出',fmtN(totalInterest),'r');
-  html+=_resRow('總還款金額',fmtN(totalPay));
-  if(fee>0)html+=_resRow('手續費',fmtN(fee));
-  html+=_resRow('總費用（含手續費）',fmtN(totalPay+fee),'r');
+  if(fee>0)html+=_resRow('手續費 / 開辦費',fmtN(fee));
+  if(fee>0)html+=_resRow('總費用（利息+手續費）',fmtN(totalCostAll),'r');
+  html+=_resRow('總還款金額'+(fee>0?'（含手續費）':''),fmtN(totalPay+(fee||0)));
   if(fee>0)html+=_resRow('實際年利率 APR',apr+'%','r');
   html+='</div>';
   document.getElementById('c-loan-result').innerHTML=html;
