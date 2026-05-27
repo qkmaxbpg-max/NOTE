@@ -426,13 +426,13 @@
     <div class="mpull"></div>
     <div id="add-s1">
       <div class="mttl">新增帳戶</div>
-      <p style="font-size:13px;color:var(--fg2);margin-bottom:16px">選擇類別</p>
+      <p style="font-size:13px;color:var(--fg2);margin-bottom:16px">選擇帳戶所屬的資產類別</p>
       <div class="step-list">
-        <div class="step-item" onclick="addGoS2('liquid')">流動資金<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg></div>
-        <div class="step-item" onclick="addGoS2('invest')">投資<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg></div>
-        <div class="step-item" onclick="addGoS2('fixed')">固定資產<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg></div>
-        <div class="step-item" onclick="addGoS2('recv')">應收款<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg></div>
-        <div class="step-item" onclick="addGoS2('debt')">負債<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg></div>
+        <div class="step-item" onclick="addGoS2('liquid')">流動資金<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg><span class="step-desc">現金、銀行帳戶、電子錢包等日常可動用的資金</span></div>
+        <div class="step-item" onclick="addGoS2('invest')">投資<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg><span class="step-desc">股票、加密貨幣、貴金屬等投資標的</span></div>
+        <div class="step-item" onclick="addGoS2('fixed')">固定資產<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg><span class="step-desc">房產、汽車等不易變現的資產</span></div>
+        <div class="step-item" onclick="addGoS2('recv')">應收款<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg><span class="step-desc">別人欠你的錢、待收款項</span></div>
+        <div class="step-item" onclick="addGoS2('debt')">負債<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg><span class="step-desc">信用卡、貸款、應付帳款等欠款</span></div>
       </div>
     </div>
     <div id="add-s2" style="display:none">
@@ -443,8 +443,8 @@
     <div id="add-s3" style="display:none">
       <div class="step-back" onclick="addShowStep(2)"><svg viewBox="0 0 16 16"><path d="M10 4L6 8l4 4"/></svg>返回</div>
       <div class="mttl" id="add-s3-ttl">帳戶設定</div>
-      <div class="field"><label>帳戶名稱</label><input type="text" id="add-name" placeholder="自訂名稱"></div>
-      <div class="field" id="add-bal-wrap"><label>餘額（NT$）</label><input type="text" inputmode="decimal" id="add-bal" placeholder="0" inputmode="decimal" oninput="calcAddLoan();updateCcyPreview('add');calcLoanDisburse()"></div>
+      <div class="field"><label>帳戶名稱</label><input type="text" id="add-name" placeholder="例：玉山銀行、LINE Pay"><div class="field-hint" id="add-name-hint">為這個帳戶取一個容易辨識的名稱</div></div>
+      <div class="field" id="add-bal-wrap"><label>餘額（NT$）</label><input type="text" inputmode="decimal" id="add-bal" placeholder="輸入目前餘額" inputmode="decimal" oninput="calcAddLoan();updateCcyPreview('add');calcLoanDisburse()"><div class="field-hint" id="add-bal-hint">填入此帳戶目前的實際餘額</div></div>
       <div id="add-ccy-wrap">
         <label style="font-size:12px;color:var(--fg2);margin-bottom:6px;display:block">幣別</label>
         <div class="ccy-chips" id="add-ccy-chips"></div>
@@ -465,13 +465,13 @@
           <input type="hidden" id="add-ticker">
           <input type="hidden" id="add-isUs">
           <div class="f2">
-            <div class="field"><label>持有股數</label><input type="text" inputmode="decimal" id="add-shares" placeholder="0" oninput="calcAddFee()"></div>
-            <div class="field"><label>買入均價</label><input type="text" inputmode="decimal" id="add-price" placeholder="0.00" step="0.01" oninput="calcAddFee()"></div>
+            <div class="field"><label>持有股數</label><input type="text" inputmode="decimal" id="add-shares" placeholder="例：10" oninput="calcAddFee()"></div>
+            <div class="field"><label>買入均價</label><input type="text" inputmode="decimal" id="add-price" placeholder="每股價格" step="0.01" oninput="calcAddFee()"></div>
           </div>
           <div class="field">
             <label>實際付出</label>
             <div class="paid-input-row">
-              <input type="text" inputmode="decimal" id="add-paid" placeholder="0" oninput="calcAddFee()" style="flex:1">
+              <input type="text" inputmode="decimal" id="add-paid" placeholder="實際從帳戶扣的金額" oninput="calcAddFee()" style="flex:1">
               <div class="paid-ccy-tog" id="add-paid-ccy-tog">
                 <button class="paid-ccy-btn on" onclick="setPaidCcy('add','TWD')">NT$</button>
                 <button class="paid-ccy-btn" onclick="setPaidCcy('add','USD')">US$</button>
@@ -514,12 +514,12 @@
           </select>
         </div>
         <div class="f2">
-          <div class="field"><label>年利率（%）</label><input type="text" inputmode="decimal" id="add-rate" placeholder="3.08" step="0.01" oninput="calcAddLoan()"></div>
-          <div class="field" id="add-months-wrap"><label id="add-months-lbl">總期數（月）</label><input type="text" inputmode="decimal" id="add-months" placeholder="84" oninput="calcAddLoan()"></div>
+          <div class="field"><label>年利率（%）</label><input type="text" inputmode="decimal" id="add-rate" placeholder="例：3.08" step="0.01" oninput="calcAddLoan()"></div>
+          <div class="field" id="add-months-wrap"><label id="add-months-lbl">總期數（月）</label><input type="text" inputmode="decimal" id="add-months" placeholder="例：84（7年）" oninput="calcAddLoan()"></div>
         </div>
         <div class="f2">
           <div class="field"><label>還款起始日</label><input type="date" id="add-loan-start"></div>
-          <div class="field"><label>每月扣款日</label><input type="text" inputmode="decimal" id="add-pay-day" placeholder="22" min="1" max="28"></div>
+          <div class="field"><label>每月扣款日</label><input type="text" inputmode="decimal" id="add-pay-day" placeholder="例：22" min="1" max="28"><div class="field-hint">每月幾號扣款（1-28）</div></div>
         </div>
         <div class="field" id="add-pmt-wrap"><label>每期還款金額（選填，留空自動計算）</label><input type="text" inputmode="decimal" id="add-pmt-override" placeholder="系統自動計算" step="1" oninput="calcAddLoan()"></div>
         <div class="info-box" id="add-loan-box" style="display:none">
@@ -548,7 +548,7 @@
         <div style="font-size:11px;color:var(--fg2);text-transform:uppercase;letter-spacing:.07em;margin:4px 0 8px">🔒 質押標的</div>
         <div id="add-pledge-stocks-list"></div>
       </div>
-      <div class="field"><label>說明（選填）</label><input type="text" id="add-desc" placeholder="如：玉山銀行"></div>
+      <div class="field"><label>說明（選填）</label><input type="text" id="add-desc" placeholder="補充備註，如：銀行分行、用途"><div class="field-hint">會顯示在帳戶名稱旁邊</div></div>
       <div class="tog-row"><span class="tog-lbl">納入統計與淨值</span><button class="tog on" id="add-stat-tog" onclick="this.classList.toggle('on')"></button></div>
       <button class="subbtn" onclick="submitAddAcct()">新增帳戶</button>
     </div>
@@ -666,7 +666,7 @@
       <button class="tbtn" onclick="setTxType('tf',this)">轉帳</button>
     </div>
     <div id="tx-normal-fields">
-      <div class="field"><label>金額（NT$）</label><input type="text" inputmode="decimal" id="f-amt" placeholder="0" inputmode="decimal" style="font-size:22px;font-family:var(--mono)"></div>
+      <div class="field"><label>金額（NT$）</label><input type="text" inputmode="decimal" id="f-amt" placeholder="輸入金額" inputmode="decimal" style="font-size:22px;font-family:var(--mono)"></div>
       <div class="f2">
         <div class="field"><label>日期</label><input type="date" id="f-date"></div>
         <div class="field"><label>帳戶</label>
@@ -683,7 +683,7 @@
           <button style="padding:12px;border-radius:var(--rs);border:1.5px solid var(--bg4);background:var(--bg2);color:var(--fg2);cursor:pointer;font-size:14px;margin-bottom:0" onclick="openModal('cat')">⚙</button>
         </div>
       </div>
-      <div class="field"><label>備註</label><input type="text" id="f-note" placeholder="選填備註..."></div>
+      <div class="field"><label>備註</label><input type="text" id="f-note" placeholder="例：午餐、加油…（選填）"></div>
       <div class="rec-row"><span class="rec-lbl">定期排程</span><button class="tog" id="rec-tog" onclick="this.classList.toggle('on')"></button></div>
       <button class="subbtn" onclick="submitTx()">新增記錄</button>
     </div>
@@ -858,7 +858,7 @@
 <div class="backdrop" id="m-transfer">
   <div class="modal">
     <div class="mpull"></div><div class="mttl">轉帳</div>
-    <div class="field"><label>金額（NT$）</label><input type="text" inputmode="decimal" id="tf-amt" placeholder="0" inputmode="decimal" style="font-size:22px;font-family:var(--mono)"></div>
+    <div class="field"><label>金額（NT$）</label><input type="text" inputmode="decimal" id="tf-amt" placeholder="輸入轉帳金額" inputmode="decimal" style="font-size:22px;font-family:var(--mono)"></div>
     <div class="field">
       <label>從</label>
       <div class="acct-pick-btn" id="tf-from-btn" onclick="openAcctPicker('tf-from')">選擇轉出帳戶</div>

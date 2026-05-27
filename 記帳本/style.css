@@ -246,6 +246,7 @@ body.light .acct-add-btn:hover{background:rgba(0,0,0,.03)}
 .mttl{font-size:18px;font-weight:600;margin-bottom:20px}
 .field{margin-bottom:14px}
 .field label{display:block;font-size:10px;color:var(--fg2);letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px}
+.field-hint{font-size:11px;color:var(--fg3);margin-top:4px;line-height:1.5}
 .field input,.field select{width:100%;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);padding:12px 14px;font-family:var(--font);font-size:15px;color:var(--fg0);outline:none;-webkit-appearance:none}
 .field input:focus,.field select:focus{border-color:var(--green)}
 .field select option{background:var(--bg2)}
@@ -260,11 +261,13 @@ body.light .acct-add-btn:hover{background:rgba(0,0,0,.03)}
 .tog::after{content:'';position:absolute;width:20px;height:20px;border-radius:50%;background:#fff;top:3px;left:3px;transition:transform .2s;box-shadow:0 1px 4px rgba(0,0,0,.25)}
 .tog.on::after{transform:translateX(18px)}
 .step-list{display:flex;flex-direction:column;gap:8px;margin-bottom:8px}
-.step-item{display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);cursor:pointer;font-size:14px;font-weight:500;color:var(--fg0);transition:border-color .15s,background .15s,opacity .15s}
+.step-item{display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--bg2);border:1.5px solid var(--bg4);border-radius:var(--rs);cursor:pointer;font-size:14px;font-weight:500;color:var(--fg0);transition:border-color .15s,background .15s,opacity .15s;flex-wrap:wrap}
+.step-item .step-desc{width:100%;font-size:11px;color:var(--fg3);font-weight:400;margin-top:2px;line-height:1.4}
 .step-item svg:last-child{margin-left:auto}
 .step-item:hover{border-color:var(--green);background:var(--gbg);color:var(--green)}
 .step-item svg{width:16px;height:16px;fill:none;stroke:var(--fg3);stroke-width:2;stroke-linecap:round}
 .step-item:hover svg{stroke:var(--green)}
+.step-item:hover .step-desc{color:var(--gdim)}
 .step-back{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--fg2);cursor:pointer;margin-bottom:16px}
 .step-back svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round}
 .info-box{background:var(--bg2);border-radius:var(--rs);padding:12px 14px;margin-top:2px;border:1px solid var(--bg4)}

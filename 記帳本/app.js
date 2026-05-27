@@ -1225,7 +1225,8 @@ function renderOverview(){
     if(d.items.length===0){
       var empty=document.createElement('div');
       empty.className='empty-note';
-      empty.textContent='尚未新增帳戶';
+      var emptyMsg={liquid:'點下方按鈕新增你的第一個銀行或現金帳戶',invest:'點下方按鈕新增股票或其他投資帳戶',fixed:'點下方按鈕登記房產或汽車等固定資產',recv:'點下方按鈕記錄別人欠你的款項',debt:'點下方按鈕新增信用卡或貸款'};
+      empty.textContent=emptyMsg[key]||'尚未新增帳戶';
       wrap.appendChild(empty);
     }
 
@@ -1479,10 +1480,18 @@ function openAddAcct(key){
   st.addL1=key;
   var titles={liquid:'流動資金',invest:'投資',fixed:'固定資產',recv:'應收款',debt:'負債'};
   $('add-s2-ttl').textContent=titles[key]+' — 選擇帳戶類型';
+  var typeDescs={
+    '現金':'手邊實體現金或外幣現鈔','銀行':'銀行帳戶、定存','電子錢包':'LINE Pay、街口等行動支付','其他':'不屬於以上分類的資金',
+    '股票':'台股、美股，自動追蹤股價','加密貨幣':'BTC、ETH 等數位資產','貴金屬':'黃金、白銀等實體或存摺',
+    '房產':'自住或投資用不動產','汽車':'自用或營業車輛','其他固定資產':'其他不易變現的資產',
+    '應收款':'別人欠你的錢',
+    '信用卡':'信用卡消費帳單','信用貸款':'銀行個人信貸','股票質押':'用股票擔保借款','房貸':'購屋貸款','車貸':'購車貸款','其他貸款':'其他類型借款','應付款':'尚未支付的費用','其他負債':'其他欠款'
+  };
   var list=$('add-s2-list');list.innerHTML='';
   L3_TYPES[key].forEach(function(t){
     var div=document.createElement('div');div.className='step-item';
-    div.innerHTML=t+'<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg>';
+    var desc=typeDescs[t]?'<span class="step-desc">'+typeDescs[t]+'</span>':'';
+    div.innerHTML=t+'<svg viewBox="0 0 16 16"><path d="M6 4l4 4-4 4"/></svg>'+desc;
     div.onclick=function(){addGoS3(t);};
     list.appendChild(div);
   });
@@ -1494,6 +1503,29 @@ function addGoS3(type){
   $('add-name').value='';
   $('add-bal').value='';$('add-desc').value='';
   $('add-stat-tog').classList.add('on');
+  // dynamic placeholder & hints based on type
+  var nameHints={
+    '現金':'例：錢包現金、家裡保險箱','銀行':'例：玉山銀行、台新銀行',
+    '電子錢包':'例：LINE Pay、街口支付','股票':'選好股票後會自動填入',
+    '加密貨幣':'例：BTC、ETH','貴金屬':'例：黃金存摺',
+    '房產':'例：板橋自住宅','汽車':'例：Toyota RAV4',
+    '應收款':'例：小明借款','信用卡':'例：玉山 Pi 卡',
+    '信用貸款':'例：信貸-玉山','股票質押':'例：質押-國泰',
+    '房貸':'例：房貸-板橋','車貸':'例：車貸-和潤'
+  };
+  var balHints={
+    '現金':'目前手邊有多少現金','銀行':'銀行 APP 顯示的餘額',
+    '電子錢包':'電子錢包裡的餘額','信用卡':'本期未繳金額（正數）',
+    '應收款':'對方欠你多少錢'
+  };
+  var nh=nameHints[type]||'為帳戶取一個好記的名稱';
+  $('add-name').placeholder=nh;
+  if($('add-name-hint'))$('add-name-hint').textContent=LOAN_TYPES.indexOf(type)>=0?'貸款名稱，方便辨識不同貸款':'為這個帳戶取一個容易辨識的名稱';
+  if($('add-bal-hint'))$('add-bal-hint').textContent=balHints[type]||(LOAN_TYPES.indexOf(type)>=0?'填入貸款總金額（正數）':'填入此帳戶目前的實際餘額');
+  if(LOAN_TYPES.indexOf(type)>=0)$('add-bal').placeholder='貸款總金額';
+  else if(type==='信用卡')$('add-bal').placeholder='未繳金額';
+  else if(type==='應收款')$('add-bal').placeholder='待收金額';
+  else $('add-bal').placeholder='輸入目前餘額';
   var isStock=(type==='股票');
   $('add-stock-f').style.display=isStock?'block':'none';
   $('add-bal-wrap').style.display=isStock?'none':'';// hide balance for stocks
