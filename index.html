@@ -15,7 +15,7 @@
 <!-- PWA: common -->
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=37">
+<link rel="stylesheet" href="style.css?v=38">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
@@ -521,6 +521,11 @@
           <div class="field"><label>還款起始日</label><input type="date" id="add-loan-start"></div>
           <div class="field"><label>每月扣款日</label><input type="text" inputmode="decimal" id="add-pay-day" placeholder="例：22" min="1" max="28"><div class="field-hint">每月幾號扣款（1-28）</div></div>
         </div>
+        <div class="field">
+          <label>繳款帳戶（每月自動扣款）</label>
+          <div class="acct-pick-btn" id="add-pay-from-btn" onclick="openAcctPicker('add-pay-from')">選擇繳款帳戶</div>
+          <input type="hidden" id="add-pay-from-id">
+        </div>
         <div class="field" id="add-pmt-wrap"><label>每期還款金額（選填，留空自動計算）</label><input type="text" inputmode="decimal" id="add-pmt-override" placeholder="系統自動計算" step="1" oninput="calcAddLoan()"></div>
         <div class="info-box" id="add-loan-box" style="display:none">
           <div class="info-row"><span class="info-lbl" id="add-monthly-lbl">每月還款</span><span class="info-val" id="add-monthly">—</span></div>
@@ -625,6 +630,11 @@
         <div class="f2">
           <div class="field"><label>還款起始日</label><input type="date" id="edit-loan-start"></div>
           <div class="field"><label>每月扣款日</label><input type="text" inputmode="decimal" id="edit-pay-day" min="1" max="28"></div>
+        </div>
+        <div class="field">
+          <label>繳款帳戶（每月自動扣款）</label>
+          <div class="acct-pick-btn" id="edit-pay-from-btn" onclick="openAcctPicker('edit-pay-from')">選擇繳款帳戶</div>
+          <input type="hidden" id="edit-pay-from-id">
         </div>
         <div class="field" id="edit-pmt-wrap"><label>每期還款金額（選填）</label><input type="text" inputmode="decimal" id="edit-pmt-override" placeholder="系統自動計算" oninput="calcEditLoan()"></div>
         <div class="info-box" id="edit-loan-preview" style="display:none">
@@ -998,6 +1008,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=37"></script>
+<script src="app.js?v=38"></script>
 </body>
 </html>
