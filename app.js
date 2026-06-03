@@ -4983,7 +4983,7 @@ function renderCreditAnalysis(){
     html+='<div class="lev-metric"><div class="lev-metric-lbl">剩餘本金</div><div class="lev-metric-val">'+fmtN(cvt(remaining))+'</div></div>';
     html+='<div class="lev-metric"><div class="lev-metric-lbl">累計利息支出</div><div class="lev-metric-val r">'+fmtN(cvt(cumInterest))+'</div></div>';
     html+='<div class="lev-metric"><div class="lev-metric-lbl">累計已還本金</div><div class="lev-metric-val">'+fmtN(cvt(cumPrincipal))+'</div></div>';
-    html+='<div class="lev-metric"><div class="lev-metric-lbl">淨報酬率 ROI</div><div class="lev-metric-val '+(roi>=0?'g':'r')+'">'+roi.toFixed(1)+'%</div></div>';
+    html+='<div class="lev-metric"><div class="lev-metric-lbl">信貸投資總額</div><div class="lev-metric-val">'+fmtN(cvt(stockCost))+'</div></div>';
     html+='<div class="lev-metric"><div class="lev-metric-lbl">利息覆蓋率 ICR</div><div class="lev-metric-val '+(icr>=1?'g':icr>0?'w':'r')+'">'+icr.toFixed(2)+'x</div></div>';
     html+='</div>';
 
@@ -5061,7 +5061,7 @@ function renderCreditAnalysis(){
     summaryHtml+='<div class="lev-metric"><div class="lev-metric-lbl">總買入成本</div><div class="lev-metric-val">'+fmtN(cvt(totalCost))+'</div></div>';
     summaryHtml+='<div class="lev-metric"><div class="lev-metric-lbl">總累計利息</div><div class="lev-metric-val r">'+fmtN(cvt(totalInterestPaid))+'</div></div>';
     summaryHtml+='<div class="lev-metric"><div class="lev-metric-lbl">淨損益（扣息）</div><div class="lev-metric-val '+(overallPnl>=0?'g':'r')+'">'+(overallPnl>=0?'+':'')+fmtN(cvt(overallPnl))+'</div></div>';
-    summaryHtml+='<div class="lev-metric"><div class="lev-metric-lbl">總 ROI</div><div class="lev-metric-val '+(overallROI>=0?'g':'r')+'">'+overallROI.toFixed(1)+'%</div></div>';
+    summaryHtml+='<div class="lev-metric"><div class="lev-metric-lbl">信貸投資總額</div><div class="lev-metric-val">'+fmtN(cvt(totalCost))+'</div></div>';
     summaryHtml+='<div class="lev-metric"><div class="lev-metric-lbl">總 ICR</div><div class="lev-metric-val '+(overallICR>=1?'g':overallICR>0?'w':'r')+'">'+overallICR.toFixed(2)+'x</div></div>';
     summaryHtml+='</div></div>';
     html=summaryHtml+html;
