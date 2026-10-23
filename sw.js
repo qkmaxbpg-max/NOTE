@@ -1,8 +1,9 @@
-var CACHE_NAME = 'fintrack-v72';
+var CACHE_NAME = 'fintrack-v73';
 var ASSETS = [
   './index.html',
   './style.css',
   './app.js',
+  './loans-v2.js',
   './manifest.json',
   'https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap'
 ];

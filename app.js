@@ -818,6 +818,7 @@ function api(method,url,body){
   m=url.match(/^\/api\/accounts\/(\d+)$/);
   if(method==='DELETE'&&m){
     var delId=parseInt(m[1]);
+    var loanToDelete=allAccounts.find(function(a){return a.id===delId;});if(loanToDelete&&loanToDelete.loan&&loanToDelete.loan.engine_version===2)return Promise.reject(new Error('貸款已有歷史計畫，請還清或轉貸後保留紀錄'));
     var pairedCategories=['購入股票','賣股入帳','貸款撥入'];
     return dbFrom('accounts').select('name,stock_data').eq('id',delId).single().then(function(acctRes){
       var acctName=(acctRes.data&&acctRes.data.name)||'';
@@ -1003,64 +1004,7 @@ function api(method,url,body){
 
 // ── Client-side loan auto-pay ──
 function _clientAutoPayLoans(){
-  var today=new Date();
-  var todayStr=today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
-  var monthStr=todayStr.slice(0,7);
-  var created=[];
-  var debtItems=data.debt.items.filter(function(it){return it.loan&&!it.loan.pledge_type&&it.loan.status!=='paid_off'&&it.loan.status!=='refinanced';});
-  var chain=Promise.resolve();
-  debtItems.forEach(function(it){
-    chain=chain.then(function(){
-      var ld=it.loan;
-      var payDay=ld.pay_day||1;
-      if(today.getDate()!==payDay) return;
-      var repayType=ld.repay_type||'本息平均攤還';
-      var isInt=repayType.indexOf('只繳利息')>=0;
-      // check if already paid this month
-      return dbFrom('transactions').select('id',{count:'exact',head:true}).eq('account_id',it.id).like('date',monthStr+'%').in('category',['負債沖銷','財務費用','貸款利息紀錄']).then(function(res){
-        if((res.count||0)>0) return;
-        var principal=ld.principal||0,rate=ld.annual_rate||ld.interest_rate||0;
-        var totalMonths=ld.total_months||0,startDate=ld.start_date||'';
-        if(isInt){
-          var mi=Math.round(principal*rate/100/12*100)/100;
-          var intOps=[
-            dbFrom('transactions').insert({user_id:st.userId,date:todayStr,name:it.name+' 利息',category:ld.pay_from_id?'貸款利息紀錄':'財務費用',amount:-mi,note:'月利息（只繳利息）',icon:'💸',recurring:true,account_id:it.id})
-          ];
-          // deduct from pay_from account
-          var intPayFrom=ld.pay_from_id?allAccounts.find(function(a){return a.id===ld.pay_from_id;}):null;
-          if(intPayFrom){
-            intOps.push(api('POST','/api/transactions',{date:todayStr,name:it.name+' 扣款',category:'財務費用',amount:-mi,note:'自動扣繳利息',icon:'🏦',recurring:true,account_id:intPayFrom.id}));
-          }
-          return Promise.all(intOps).then(function(){
-            created.push({account:it.name,period:0,principal:0,interest:mi});
-          });
-        }
-        if(!startDate)return;
-        var sd=new Date(startDate);
-        var monthsElapsed=(today.getFullYear()-sd.getFullYear())*12+(today.getMonth()-sd.getMonth());
-        var currentPeriod=monthsElapsed+1;
-        if(currentPeriod<1||currentPeriod>totalMonths)return;
-        var sched=levAmortSchedule(principal,rate,totalMonths,ld.pmt_override,repayType);
-        var entry=sched[currentPeriod-1];
-        var pmtOps=[
-          dbFrom('transactions').insert({user_id:st.userId,date:todayStr,name:it.name+' 本金',category:'負債沖銷',amount:entry.principal,note:'第'+currentPeriod+'期 本金',icon:'🏦',recurring:true,account_id:it.id}),
-          dbFrom('transactions').insert({user_id:st.userId,date:todayStr,name:it.name+' 利息',category:ld.pay_from_id?'貸款利息紀錄':'財務費用',amount:-entry.interest,note:'第'+currentPeriod+'期 利息',icon:'💸',recurring:true,account_id:it.id}),
-          dbFrom('accounts').update({balance:it.bal+entry.principal,loan_data:Object.assign({},ld,{paid_periods:currentPeriod})}).eq('id',it.id)
-        ];
-        // deduct total payment from pay_from account
-        var pmtPayFrom=ld.pay_from_id?allAccounts.find(function(a){return a.id===ld.pay_from_id;}):null;
-        if(pmtPayFrom){
-          var totalPmt=entry.principal+entry.interest;
-          pmtOps.push(api('POST','/api/transactions',{date:todayStr,name:it.name+' 本金扣款',category:'貸款扣款',amount:-entry.principal,note:'第'+currentPeriod+'期 本金',icon:'🏦',recurring:true,account_id:pmtPayFrom.id}));
-          pmtOps.push(api('POST','/api/transactions',{date:todayStr,name:it.name+' 利息扣款',category:'財務費用',amount:-entry.interest,note:'第'+currentPeriod+'期 利息',icon:'🏦',recurring:true,account_id:pmtPayFrom.id}));
-        }
-        return Promise.all(pmtOps).then(function(){
-          created.push({account:it.name,period:currentPeriod,principal:entry.principal,interest:entry.interest});
-        });
-      });
-    });
-  });
-  return chain.then(function(){return{ok:true,created:created};});
+  return loanRPC('fintrack_sync_loans',{p_user_id:st.userId});
 }
 
 function loadAll(){
@@ -1455,6 +1399,7 @@ function ctxAction(act){
 
 // ── 提前還清 ──
 function openPayoff(key,idx){
+  var target=data[key].items[idx];if(target.loan&&target.loan.engine_version===2){loanTermsUI(target,'partial');return;}
   st.ctxKey=key;st.ctxIdx=idx;
   var it=data[key].items[idx];
   $('payoff-name').textContent=it.name;
@@ -1497,6 +1442,7 @@ function onPayoffAmountChange(){
   }
 }
 function submitPayoff(){
+  var target=data[st.ctxKey].items[st.ctxIdx];if(target.loan&&target.loan.engine_version!==2){toast('此筆貸款需先核對還款進度，暫停舊版還款入口');return Promise.resolve();}
   var key=st.ctxKey,idx=st.ctxIdx,it=data[key].items[idx];
   var dateStr=$('payoff-date').value;
   var createTx=$('payoff-create-tx').classList.contains('on');
@@ -1540,53 +1486,22 @@ function openRefi(key,idx){
   $('refi-bal').value=remaining;
   $('refi-rate').value=it.loan?it.loan.annual_rate||'':'';
   $('refi-months').value='';
-  $('refi-start').value='';
+  $('refi-start').value=FTLoans.today();loanCashOptions('refi-cash',it.loan.pay_from_id);
   $('refi-pay-day').value=it.loan?it.loan.pay_day||'':'';
   $('refi-repay-type').value=it.loan?it.loan.repay_type||'本息平均攤還':'本息平均攤還';
   $('m-refi').classList.add('on');
 }
 function submitRefi(){
-  var key=st.ctxKey,idx=st.ctxIdx,it=data[key].items[idx];
-  var newName=$('refi-name').value.trim();
-  if(!newName){toast('請輸入新貸款名稱');return;}
-  var remaining=Math.abs(it.bal);
-  var newBal=parseFloat($('refi-bal').value)||remaining;
-  var rate=parseFloat($('refi-rate').value)||0;
-  var months=parseInt($('refi-months').value)||0;
-  var repayType=$('refi-repay-type').value;
-  var payDay=parseInt($('refi-pay-day').value)||1;
-  var startDate=$('refi-start').value||'';
-  var d=new Date();
-  var dateStr=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
-  var isInt=repayType.indexOf('只繳利息')>=0;
-  var monthly=rate?(isInt?(newBal*rate/100/12):(months?calcPMT(newBal,rate,months):0)):0;
-  var newLoanData={
-    repay_type:repayType,principal:newBal,annual_rate:rate,total_months:months,
-    pay_day:payDay,start_date:startDate,paid_periods:0,
-    refinanced_from:it.id
-  };
-  return api('POST','/api/accounts',{
-    category:'debt',name:newName,type:it.type,balance:-Math.abs(newBal),
-    description:monthly?('每月'+(isInt?'利息':'還')+' '+Math.round(monthly).toLocaleString()):'',
-    dot_color:nextDot(data.debt.items),stat:it.stat,loan_data:newLoanData
-  }).then(function(res){
-    var newId=res.id;
-    var oldLoan=Object.assign({},it.loan,{status:'refinanced',refinanced_to:newId,refinanced_date:dateStr});
-    return api('PUT','/api/accounts/'+it.id,{balance:0,loan_data:oldLoan}).then(function(){
-      it.bal=0;it.loan=oldLoan;
-      return api('POST','/api/transactions',{
-        date:dateStr,name:it.name+' 代償',category:'負債沖銷',
-        amount:remaining,note:'代償 → '+newName,icon:'🔄',account_id:it.id,_skipBal:true
-      });
-    });
-  }).then(function(){
-    $('m-refi').classList.remove('on');
-    return Promise.all([loadAccounts(),loadTx()]);
-  }).then(function(){
-    renderOverview();renderStocks();renderTx();renderAnalysis();
-    if($('leveragePage').style.display==='flex')renderLeverage();
-    toast('✓ 代償完成，已建立「'+newName+'」');
-  });
+  var it=data[st.ctxKey].items[st.ctxIdx];
+  try{
+    if(it.loan.engine_version!==2)throw Error('請先核對貸款進度');
+    var name=$('refi-name').value.trim();if(!name)throw Error('請填新貸款名稱');
+    var principal=Number($('refi-bal').value);if(principal!==Math.abs(it.bal))throw Error('本次轉貸金額需等於原貸款剩餘本金；增貸請另建貸款');
+    var ld=FTLoans.initial({principal:principal,annual_rate:Number($('refi-rate').value),total_months:Number($('refi-months').value),pay_day:Number($('refi-pay-day').value),start_date:$('refi-start').value,repay_type:$('refi-repay-type').value,pay_from_id:Number($('refi-cash').value)||null,_fee:0});
+    if(ld.start_date!==FTLoans.today())throw Error('轉貸請使用今日為生效日');
+    if(!confirm('確認轉貸並將既有股票資金來源轉掛到 '+name+'？此操作不再次買股或扣款。'))return;
+    return loanRPC('fintrack_loan_refinance',{p_request:{account_id:it.id,expected_balance:it.bal,expected_loan:it.loan,name:name,loan:ld}}).then(function(){$('m-refi').classList.remove('on');return loanRefresh();}).then(function(){toast('轉貸完成，已保留舊貸款與股票來源歷史');}).catch(function(e){toast(e.message);});
+  }catch(e){toast(e.message);return Promise.resolve();}
 }
 
 // add account
@@ -1837,11 +1752,12 @@ function calcAddLoan(){
     $('add-loan-box').style.display='block';return;
   }
   var r=rAnnual/100/12,n=parseInt($('add-months').value)||0;
-  if(!P||!r||!n){$('add-loan-box').style.display='none';return;}
+  if(!P||!n){$('add-loan-box').style.display='none';return;}
   var overr=parseFloat($('add-pmt-override').value)||0;
   var m=overr||calcPMT(P,rAnnual,n);
   var ii=P*r,pp=m-ii;
   var totalPay=m*n,totalInt=totalPay-P;
+  try{var rows=FTLoans.schedule({principal:P,annual_rate:rAnnual,total_months:n,pmt_override:overr||null,repay_type:repayType,pay_day:1,start_date:'2000-01-01'});m=rows[0].payment;pp=rows[0].principal;ii=rows[0].interest;totalPay=rows.reduce(function(v,r){return v+r.payment;},0);totalInt=rows.reduce(function(v,r){return v+r.interest;},0);}catch(e){$('add-loan-box').style.display='none';return;}
   $('add-monthly').textContent='NT$ '+Math.round(m).toLocaleString();
   $('add-pp').textContent='NT$ '+Math.round(pp).toLocaleString();
   $('add-ii').textContent='NT$ '+Math.round(ii).toLocaleString();
@@ -1948,7 +1864,7 @@ function submitAddAcct(){
     var pmtOverride=parseFloat($('add-pmt-override').value)||null;
     var repayType=$('add-repay-type').value;
     var isIntOnly=repayType.indexOf('只繳利息')>=0;
-    if(rate&&(months||isIntOnly)){
+    if(months||isIntOnly||rate===0){
       var payFromId=parseInt($('add-pay-from-id').value)||null;
       payload.loan_data={
         repay_type:repayType,
@@ -1968,6 +1884,9 @@ function submitAddAcct(){
       }
       var monthly=isIntOnly?(Math.abs(bal)*rate/100/12):(pmtOverride||calcPMT(Math.abs(bal),rate,months));
       payload.description=isIntOnly?('每月利息 '+Math.round(monthly).toLocaleString()):('每月還 '+Math.round(monthly).toLocaleString());
+    }
+    if(type!=='股票質押'){
+      try{payload.loan_data._fee=Number($('add-loan-fee').value)||0;if(payload.loan_data._fee<0||payload.loan_data._fee>=Math.abs(bal))throw Error('開辦費需小於本金');payload.loan_data=FTLoans.initial(payload.loan_data);}catch(e){toast(e.message);return;}
     }
     // loan disbursement
     var disburseId=parseInt($('add-disburse-id').value)||0;
@@ -2022,6 +1941,7 @@ function submitAddAcct(){
     });
   }).then(function(){
     renderOverview();renderStocks();renderTx();
+    if(payload.loan_data&&payload.loan_data.engine_version===2)_clientAutoPayLoans().then(loanRefresh).catch(function(e){toast(e.message);});
     // auto-open the section that received the new account
     var sec=$('ac-'+key);
     if(sec&&!sec.classList.contains('open'))sec.classList.add('open');
@@ -2116,7 +2036,7 @@ function applyEditLock(){
     btn.classList.add('unlocked');
   }
 }
-function toggleEditLock(){editLocked=!editLocked;applyEditLock();if(!editLocked)calcEditLoan();}
+function toggleEditLock(){var it=data[st.editKey].items[st.editIdx];if(it.loan&&it.loan.engine_version===2){$('m-edit').classList.remove('on');openLoanPlan(it.id);return;}editLocked=!editLocked;applyEditLock();if(!editLocked)calcEditLoan();}
 function onEditRepayTypeChange(){
   var type=$('edit-repay-type').value;
   var isInt=type.indexOf('只繳利息')>=0;
@@ -2210,7 +2130,7 @@ function submitEdit(){
     payload.balance=newBal;
   }
   // save loan_data if unlocked
-  if(it.loan&&!editLocked){
+  if(it.loan&&!editLocked&&it.loan.engine_version!==2){
     var repayType=$('edit-repay-type').value;
     var newStartDate=$('edit-loan-start').value||it.loan.start_date||'';
     var editPayFrom=parseInt($('edit-pay-from-id').value)||null;
@@ -2227,6 +2147,7 @@ function submitEdit(){
     newLoan.paid_periods=Math.max(0,Math.min(it.loan.paid_periods||0,newLoan.total_months||0));
     payload.loan_data=newLoan;
   }
+  if(it.loan&&it.loan.engine_version===2&&newBal!==oldBal){toast('請從貸款的調整計畫／提前還款更新本金，保留歷史紀錄');return Promise.resolve();}
   // always save pledged_stocks for pledge accounts
   if(it.type==='股票質押'){
     if(!payload.loan_data) payload.loan_data=Object.assign({},it.loan);
@@ -4894,9 +4815,8 @@ function renderLevSummary(){
       loanInvested+=fundedCost;
     });
     var loanAmt=Math.abs(l.bal);
-    var loanFee=(l.loan&&l.loan._fee)||0;
-    var disbursed=loanAmt-loanFee;
-    var unInv=Math.max(0,disbursed-loanInvested);
+    // Unrecorded bank cash cannot be inferred from a debt balance.
+    var unInv=0;
     uninvestedCredit+=unInv;
     creditAssetVal+=unInv;
     creditDebt+=loanAmt;
@@ -4958,7 +4878,7 @@ function renderCreditAnalysis(){
   loans.forEach(function(loan){
     var ld=loan.loan;
     var isIntOnly=(ld.repay_type||'').indexOf('只繳利息')>=0;
-    var sched=levAmortSchedule(ld.principal,ld.annual_rate,ld.total_months,ld.pmt_override,ld.repay_type);
+    var sched=ld.engine_version===2?FTLoans.current(ld):levAmortSchedule(ld.principal,ld.annual_rate,ld.total_months,ld.pmt_override,ld.repay_type);
     // Recorded repayments and account balance are authoritative. Calendar
     // elapsed time is a schedule, not evidence of a completed payment.
     var paid=Math.max(0,Math.min(ld.paid_periods||0,ld.total_months||0));
@@ -4968,12 +4888,14 @@ function renderCreditAnalysis(){
       cumInterest+=sched[i].interest;
       cumPrincipal+=sched[i].principal;
     }
-    if(isIntOnly&&paid>0){var mi=ld.principal*ld.annual_rate/100/12;cumInterest=mi*paid;}
+    if(isIntOnly&&paid>0&&ld.engine_version!==2){var mi=ld.principal*ld.annual_rate/100/12;cumInterest=mi*paid;}
+    cumInterest+=Number(ld.extra_interest||0);
     cumPrincipal=Math.max(0,(ld.principal||0)-remaining);
     totalInterestPaid+=cumInterest;
     totalPrincipalPaid+=cumPrincipal;
 
-    var pmt=sched.length?sched[0].payment:0;
+    var nextRow=sched.find(function(r){return r.period>paid;});
+    var pmt=nextRow?nextRow.payment:0;
     var progressPct=ld.total_months?Math.round(paid/ld.total_months*100):0;
 
     // associated stocks (funded portion only)
@@ -5017,7 +4939,7 @@ function renderCreditAnalysis(){
     html+='<div class="lev-metrics">';
     html+='<div class="lev-metric"><div class="lev-metric-lbl">每期還款</div><div class="lev-metric-val">'+fmtN(cvt(pmt))+'</div></div>';
     html+='<div class="lev-metric"><div class="lev-metric-lbl">剩餘本金</div><div class="lev-metric-val">'+fmtN(cvt(remaining))+'</div></div>';
-    html+='<div class="lev-metric"><div class="lev-metric-lbl">累計利息支出</div><div class="lev-metric-val r">'+fmtN(cvt(cumInterest))+'</div></div>';
+    html+='<div class="lev-metric"><div class="lev-metric-lbl">累計利息（依計畫）</div><div class="lev-metric-val r">'+fmtN(cvt(cumInterest))+'</div></div>';
     html+='<div class="lev-metric"><div class="lev-metric-lbl">累計已還本金</div><div class="lev-metric-val">'+fmtN(cvt(cumPrincipal))+'</div></div>';
     html+='<div class="lev-metric"><div class="lev-metric-lbl">信貸投資總額</div><div class="lev-metric-val">'+fmtN(cvt(stockCost))+'</div></div>';
     html+='<div class="lev-metric"><div class="lev-metric-lbl">利息覆蓋率 ICR</div><div class="lev-metric-val '+(icr>=1?'g':icr>0?'w':'r')+'">'+icr.toFixed(2)+'x</div></div>';
@@ -5053,13 +4975,13 @@ function renderCreditAnalysis(){
     html+='<div class="lev-toggle" onclick="this.classList.toggle(\'open\');this.nextElementSibling.style.display=this.classList.contains(\'open\')?\'block\':\'none\'">';
     html+='📋 還款明細表 <svg viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></svg></div>';
     html+='<div style="display:none"><div class="lev-tbl-wrap"><table class="lev-tbl"><thead><tr>';
-    html+='<th>期</th><th>還款</th><th>本金</th><th>利息</th><th>剩餘</th></tr></thead><tbody>';
+    html+='<th>期／繳款日</th><th>還款</th><th>本金</th><th>利息</th><th>剩餘</th></tr></thead><tbody>';
     sched.forEach(function(row){
       var cls=row.period<=paid?'paid':(row.period===paid+1?'current':'');
       var prefix=row.period<=paid?'✓ ':(row.period===paid+1?'▶ ':'');
       // 先整數化還款與利息，本金 = 還款 - 利息，確保三欄相加不差1元
       var dispPay=Math.round(cvt(row.payment)),dispInt=Math.round(cvt(row.interest)),dispPrin=dispPay-dispInt;
-      html+='<tr class="'+cls+'"><td>'+prefix+row.period+'</td><td>'+dispPay.toLocaleString('zh-TW')+'</td>';
+      html+='<tr class="'+cls+'"><td>'+prefix+row.period+(row.date?'<br><small>'+row.date+'</small>':'')+'</td><td>'+dispPay.toLocaleString('zh-TW')+'</td>';
       html+='<td>'+dispPrin.toLocaleString('zh-TW')+'</td><td>'+dispInt.toLocaleString('zh-TW')+'</td><td>'+fmtN(cvt(row.remaining))+'</td></tr>';
     });
     html+='</tbody></table></div></div>';
@@ -5149,20 +5071,23 @@ function openLoanDetail(acctId){
     totalPay=Math.round(pmt*months);
     totalInt=totalPay-principal;
   }
+  if(ld.engine_version===2){var planRows=FTLoans.current(ld);var nr=planRows.find(function(r){return r.period>(ld.paid_periods||0);});pmt=nr?nr.payment:0;var totals=FTLoans.totals(ld);totalPay=totals.payment;totalInt=totals.interest;}
   var startStr=ld.start_date||'—';
   var payDay=ld.pay_day||'—';
   var loanFee=ld._fee||0;
-  var apr=calcLoanAPR(principal,pmt,months,loanFee,isIntOnly);
-  var totalCostAll=totalInt+loanFee;
+  var apr=ld.engine_version===2?FTLoans.apr(ld):calcLoanAPR(principal,pmt,months,loanFee,isIntOnly);
+  var totalCostAll=totalInt+(ld.engine_version===2?FTLoans.totals(ld).fees:loanFee);
 
   var h='<div class="mttl">'+acct.name+' 貸款詳情</div>';
+  if(ld.engine_version===2&&ld.status!=='paid_off'&&ld.status!=='refinanced')h+='<button class="subbtn" onclick="openLoanPlan('+acct.id+')">調整利率／還款計畫（保留歷史）</button>';
+  if(ld.engine_version!==2)h+='<p>舊版貸款：需核對還款進度後才能啟用自動還款。</p>';
   h+='<div class="info-box">';
   h+='<div class="info-row"><span class="info-lbl">還款方式</span><span class="info-val">'+(ld.repay_type||'—')+'</span></div>';
   h+='<div class="info-row"><span class="info-lbl">貸款本金</span><span class="info-val">'+ccySym()+' '+fmtN(cvt(principal))+'</span></div>';
   h+='<div class="info-row"><span class="info-lbl">年利率</span><span class="info-val">'+rate+'%</span></div>';
   h+='<div class="info-row"><span class="info-lbl">總期數</span><span class="info-val">'+(months||'無到期')+'</span></div>';
   h+='<div class="info-row"><span class="info-lbl">每月還款</span><span class="info-val">'+ccySym()+' '+fmtN(cvt(pmt))+'</span></div>';
-  h+='<div class="info-row"><span class="info-lbl">起始日</span><span class="info-val">'+startStr+'</span></div>';
+  h+='<div class="info-row"><span class="info-lbl">撥款日</span><span class="info-val">'+startStr+'</span></div>';
   h+='<div class="info-row"><span class="info-lbl">繳款日</span><span class="info-val">每月 '+payDay+' 日</span></div>';
   var payFromAcct=ld.pay_from_id?allAccounts.find(function(a){return a.id===ld.pay_from_id;}):null;
   h+='<div class="info-row"><span class="info-lbl">繳款帳戶</span><span class="info-val">'+(payFromAcct?payFromAcct.name:'未設定')+'</span></div>';
@@ -5172,8 +5097,10 @@ function openLoanDetail(acctId){
   h+='<div class="info-row"><span class="info-lbl">總利息</span><span class="info-val r">'+ccySym()+' '+fmtN(cvt(totalInt))+'</span></div>';
   if(loanFee>0) h+='<div class="info-row"><span class="info-lbl">開辦費</span><span class="info-val">'+ccySym()+' '+fmtN(cvt(loanFee))+'</span></div>';
   if(loanFee>0) h+='<div class="info-row"><span class="info-lbl">總費用（利息+開辦費）</span><span class="info-val r">'+ccySym()+' '+fmtN(cvt(totalCostAll))+'</span></div>';
-  h+='<div class="info-row" style="border-top:1px solid var(--bg4);padding-top:8px;margin-top:4px"><span class="info-lbl" style="font-weight:600">總費用率 APR</span><span class="info-val" style="font-weight:600">'+apr.toFixed(2)+'%</span></div>';
+  h+='<div class="info-row" style="border-top:1px solid var(--bg4);padding-top:8px;margin-top:4px"><span class="info-lbl" style="font-weight:600">估算年化總費用率</span><span class="info-val" style="font-weight:600">'+apr.toFixed(2)+'%</span></div>';
   h+='</div>';
+  if(ld.history&&ld.history.length){h+='<details><summary>歷次還款計畫（'+ld.history.length+'）</summary>';ld.history.forEach(function(v){h+='<p>'+v.at+' · '+v.reason+'</p>';if(v.previous&&v.previous.schedule){h+='<div style="overflow:auto;max-height:220px"><table class="lev-tbl"><tr><th>期／日期</th><th>本金</th><th>利息</th><th>剩餘</th></tr>';v.previous.schedule.forEach(function(r){h+='<tr><td>'+r.period+'／'+(r.date||'')+'</td><td>'+fmtN(r.principal)+'</td><td>'+fmtN(r.interest)+'</td><td>'+fmtN(r.remaining)+'</td></tr>';});h+='</table></div>';}});h+='</details>';}
+  h+='<p style="font-size:12px;color:var(--fg3)">還款表為依條件估算；銀行實際計息或尾期金額不同時，請建立調整計畫。本金與利息逐期加總一致。</p>';
   h+='<div style="text-align:center;padding:16px 0 4px">';
   h+='<button class="subbtn" style="background:var(--bg3);color:var(--fg1)" onclick="$(\'m-loan-detail\').classList.remove(\'on\')">關閉</button>';
   h+='</div>';
@@ -6858,7 +6785,7 @@ function _renderBackupContent(){
 function backupExport(){
   var status=$('backup-status');
   if(status) status.textContent='正在匯出...';
-  var tables=['users','accounts','transactions','categories','groups','retirement_config','retirement_years','budgets','recurring_transactions','net_worth_snapshots'];
+  var tables=['users','accounts','transactions','categories','groups','retirement_config','retirement_years','budgets','recurring_transactions','net_worth_snapshots','fintrack_loan_events'];
   var backup={version:1,exported_at:new Date().toISOString(),user_id:st.userId,data:{}};
   var promises=tables.map(function(t){
     return dbFrom(t).select('*').eq(t==='users'?'id':'user_id',st.userId).then(function(res){

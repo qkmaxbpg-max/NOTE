@@ -518,8 +518,8 @@
           <div class="field" id="add-months-wrap"><label id="add-months-lbl">總期數（月）</label><input type="text" inputmode="decimal" id="add-months" placeholder="例：84（7年）" oninput="calcAddLoan()"></div>
         </div>
         <div class="f2">
-          <div class="field"><label>還款起始日</label><input type="date" id="add-loan-start"></div>
-          <div class="field"><label>每月扣款日</label><input type="text" inputmode="decimal" id="add-pay-day" placeholder="例：22" min="1" max="28"><div class="field-hint">每月幾號扣款（1-28）</div></div>
+          <div class="field"><label>撥款日（隔月第一期）</label><input type="date" id="add-loan-start"></div>
+          <div class="field"><label>每月扣款日</label><input type="text" inputmode="decimal" id="add-pay-day" placeholder="例：22" min="1" max="31"><div class="field-hint">每月幾號扣款（1–31；短月使用月底）</div></div>
         </div>
         <div class="field">
           <label>繳款帳戶（每月自動扣款）</label>
@@ -628,8 +628,8 @@
           <div class="field" id="edit-months-wrap"><label id="edit-months-lbl">總期數（月）</label><input type="text" inputmode="decimal" id="edit-months" oninput="calcEditLoan()"></div>
         </div>
         <div class="f2">
-          <div class="field"><label>還款起始日</label><input type="date" id="edit-loan-start"></div>
-          <div class="field"><label>每月扣款日</label><input type="text" inputmode="decimal" id="edit-pay-day" min="1" max="28"></div>
+          <div class="field"><label>撥款日（隔月第一期）</label><input type="date" id="edit-loan-start"></div>
+          <div class="field"><label>每月扣款日</label><input type="text" inputmode="decimal" id="edit-pay-day" min="1" max="31"></div>
         </div>
         <div class="field">
           <label>繳款帳戶（每月自動扣款）</label>
@@ -963,6 +963,8 @@
     <div class="mttl">代償轉貸</div>
     <div class="info-box" id="refi-old-info" style="margin-bottom:16px"></div>
     <div style="font-size:11px;color:var(--fg2);text-transform:uppercase;letter-spacing:.07em;margin-bottom:10px">新貸款設定</div>
+    <p>既有股票來源會轉掛到新貸款，原貸款與來源紀錄保留。增貸請另建貸款。</p>
+    <div class="field"><label>繳款帳戶</label><select id="refi-cash"></select></div>
     <div class="field"><label>新貸款名稱</label><input type="text" id="refi-name" placeholder="如：玉山代償貸款"></div>
     <div class="field"><label>代償金額（NT$）</label><input type="text" inputmode="decimal" id="refi-bal"></div>
     <div class="field"><label>還款類型</label>
@@ -977,8 +979,8 @@
       <div class="field"><label>總期數（月）</label><input type="text" inputmode="decimal" id="refi-months" placeholder="84"></div>
     </div>
     <div class="f2">
-      <div class="field"><label>還款起始日</label><input type="date" id="refi-start"></div>
-      <div class="field"><label>每月扣款日</label><input type="text" inputmode="decimal" id="refi-pay-day" min="1" max="28"></div>
+      <div class="field"><label>撥款日（隔月第一期）</label><input type="date" id="refi-start"></div>
+      <div class="field"><label>每月扣款日</label><input type="text" inputmode="decimal" id="refi-pay-day" min="1" max="31"></div>
     </div>
     <button class="subbtn" onclick="submitRefi()">🔄 確認代償</button>
     <button class="subbtn danger" onclick="$('m-refi').classList.remove('on')">取消</button>
@@ -1008,6 +1010,22 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=41"></script>
+<div class="backdrop" id="m-loan-plan"><div class="modal" style="max-height:90vh;overflow:auto">
+ <div class="mttl" id="lp-title">調整還款計畫</div><input type="hidden" id="lp-account"><input type="hidden" id="lp-mode">
+ <p>原始本金與已繳紀錄保留。先填銀行確認的條件，再預覽新還款表。</p>
+ <div class="field"><label>生效／還款日期</label><input type="date" id="lp-date"></div>
+ <div class="field" id="lp-extra-wrap"><label>額外償還本金（全部還清可填剩餘本金）</label><input type="number" min="0" step="1" id="lp-extra"></div>
+ <div class="f2"><div class="field"><label>另外支付利息</label><input type="number" min="0" step="1" id="lp-interest"></div><div class="field"><label>手續費／違約金</label><input type="number" min="0" step="1" id="lp-fee"></div></div>
+ <div class="field"><label>扣款帳戶</label><select id="lp-cash"></select></div>
+ <div class="field"><label>新還款方式</label><select id="lp-strategy"><option value="bank">依銀行資料填入期數與月付金</option><option value="shorten">維持月付金、縮短期數</option><option value="lower">維持剩餘期數、重新計算月付金</option></select></div>
+ <div class="f2"><div class="field"><label>新年利率（%）</label><input type="number" min="0" max="100" step="0.001" id="lp-rate"></div><div class="field"><label>剩餘期數</label><input type="number" min="1" max="600" step="1" id="lp-months"></div></div>
+ <div class="field"><label>新月付金（留空依公式計算）</label><input type="number" min="1" step="1" id="lp-payment"></div>
+ <div class="field"><label>新計畫第一期繳款日</label><input type="date" id="lp-first"></div>
+ <div class="info-box" id="lp-preview"></div>
+ <button class="subbtn" onclick="previewLoanPlan()">預覽新計畫</button><button class="subbtn" onclick="saveLoanPlan()">確認並保留舊計畫</button><button class="subbtn danger" onclick="$('m-loan-plan').classList.remove('on')">取消</button>
+</div></div>
+
+<script src="loans-v2.js?v=1"></script>
+<script src="app.js?v=42"></script>
 </body>
 </html>
