@@ -2223,15 +2223,8 @@ function submitEdit(){
       pmt_override:parseFloat($('edit-pmt-override').value)||null,
       pay_from_id:editPayFrom
     });
-    // recalculate paid_periods based on new start_date
-    if(newStartDate&&repayType.indexOf('只繳利息')<0){
-      var sd=new Date(newStartDate),now=new Date();
-      var elapsed=(now.getFullYear()-sd.getFullYear())*12+(now.getMonth()-sd.getMonth());
-      // if today < pay_day of this month, we haven't paid this month yet
-      var pd=parseInt($('edit-pay-day').value)||it.loan.pay_day||1;
-      if(now.getDate()<pd) elapsed--;
-      newLoan.paid_periods=Math.max(0,Math.min(elapsed,newLoan.total_months));
-    }
+    // Changing terms or dates does not prove another payment was made.
+    newLoan.paid_periods=Math.max(0,Math.min(it.loan.paid_periods||0,newLoan.total_months||0));
     payload.loan_data=newLoan;
   }
   // always save pledged_stocks for pledge accounts
@@ -3237,12 +3230,12 @@ function populateTxBuyStock(){
 }
 function onTxBuyStockChange(){
   var v=$('tx-buy-stock').value;
+  populateFundSourceSelect('txb-fund-source');
   $('tx-buy-search-wrap').style.display=v==='__new__'?'block':'none';
   if(v&&v!=='__new__'){
     var it=allAccounts.find(function(a){return a.id===parseInt(v);});
     if(it&&it.sk){
       $('tx-buy-pr').value=it.sk.curPrice||it.sk.avgPrice;
-      var _tbfs=_getFundSources(it.sk);var _tbfk=Object.keys(_tbfs);populateFundSourceSelect('txb-fund-source',_tbfk.length?parseInt(_tbfk[0]):null);
     }
   }
 }
@@ -4815,6 +4808,10 @@ function populateFundSourceSelect(selId,currentVal){
     if(currentVal&&l.id===currentVal)opt.selected=true;
     sel.appendChild(opt);
   });
+  // A new purchase requires an explicit choice, even when an existing holding
+  // was originally financed by a loan. Only editing may restore a saved value.
+  sel.value=currentVal==null?'':String(currentVal);
+  if(sel.selectedIndex<0)sel.value='';
 }
 function _getFundSources(sk){
   if(sk.fundSources) return sk.fundSources;
@@ -4962,27 +4959,22 @@ function renderCreditAnalysis(){
     var ld=loan.loan;
     var isIntOnly=(ld.repay_type||'').indexOf('只繳利息')>=0;
     var sched=levAmortSchedule(ld.principal,ld.annual_rate,ld.total_months,ld.pmt_override,ld.repay_type);
-    // dynamically calculate paid periods from start_date
-    var paid=ld.paid_periods||0;
-    if(ld.start_date&&!isIntOnly){
-      var _sd=new Date(ld.start_date),_now=new Date();
-      var _el=(_now.getFullYear()-_sd.getFullYear())*12+(_now.getMonth()-_sd.getMonth());
-      if(_now.getDate()<(ld.pay_day||1)) _el--;
-      paid=Math.max(0,Math.min(_el,ld.total_months));
-    }
+    // Recorded repayments and account balance are authoritative. Calendar
+    // elapsed time is a schedule, not evidence of a completed payment.
+    var paid=Math.max(0,Math.min(ld.paid_periods||0,ld.total_months||0));
+    var remaining=Math.abs(loan.bal);
     var cumInterest=0,cumPrincipal=0;
     for(var i=0;i<paid&&i<sched.length;i++){
       cumInterest+=sched[i].interest;
       cumPrincipal+=sched[i].principal;
     }
     if(isIntOnly&&paid>0){var mi=ld.principal*ld.annual_rate/100/12;cumInterest=mi*paid;}
+    cumPrincipal=Math.max(0,(ld.principal||0)-remaining);
     totalInterestPaid+=cumInterest;
     totalPrincipalPaid+=cumPrincipal;
 
     var pmt=sched.length?sched[0].payment:0;
-    var remaining=paid<sched.length?sched[paid>0?paid-1:0].remaining:0;
-    if(paid===0) remaining=ld.principal;
-    var progressPct=Math.round(paid/ld.total_months*100);
+    var progressPct=ld.total_months?Math.round(paid/ld.total_months*100):0;
 
     // associated stocks (funded portion only)
     var stocks=getStocksByFund(loan.id);
