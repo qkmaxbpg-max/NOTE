@@ -4,3 +4,5 @@ gen_avatars.py
 generate-icons.html
 .claude/
 *.pyc
+tests/results/
+tests/integration/node_modules/

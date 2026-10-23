@@ -3,6 +3,58 @@ var SUPABASE_URL='https://hpajiexvcmkidbgreaqy.supabase.co';
 var SUPABASE_ANON='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwYWppZXh2Y21raWRiZ3JlYXF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkwMTY2NTQsImV4cCI6MjA5NDU5MjY1NH0.ZIxx-cJRHxLAv-TlPpjvFGBndzs-GE9ptZENh81AQQQ';
 var sb=window.supabase.createClient(SUPABASE_URL,SUPABASE_ANON);
 
+
+// Reject failed table operations before callers can display a success message.
+function dbFrom(table){
+  return checkedQuery(sb.from(table));
+}
+function checkedQuery(query){
+  return new Proxy(query,{
+    get:function(target,key){
+      if(key==='then') return function(resolve,reject){
+        return target.then(function(result){
+          if(result.error) throw new Error('資料操作失敗，請重新載入並確認資料後再試。');
+          return result;
+        }).then(resolve,reject);
+      };
+      var value=target[key];
+      if(typeof value!=='function') return value;
+      return function(){return checkedQuery(value.apply(target,arguments));};
+    }
+  });
+}
+window.addEventListener('unhandledrejection',function(event){
+  event.preventDefault();
+  toast('未能完成操作，請重新載入並確認資料；請勿重複送出。');
+});
+
+// Internal bookkeeping entries are not income or living expenses.
+function isReportTransaction(t){
+  return ['貸款利息紀錄','轉帳','買入股票','購入股票','賣出股票','賣股入帳','賣出入帳','初始餘額','餘額調整','貸款撥入','負債沖銷','貸款扣款'].indexOf(t.cat||t.category)<0;
+}
+function cloneStockData(sk){return JSON.parse(JSON.stringify(sk||{}));}
+function editStockFunding(previous,next,selected){
+  var sources=_getFundSources(previous),ids=Object.keys(sources);
+  next.fundSources={};delete next.fundSource;
+  if(!selected)return;
+  if(ids.length&&Number(ids[0])===selected){
+    ids.forEach(function(id){
+      next.fundSources[id]={shares:previous.shares?sources[id].shares*next.shares/previous.shares:0,paid:previous.paid?sources[id].paid*next.paid/previous.paid:0};
+    });
+  } else next.fundSources[selected]={shares:next.shares,paid:next.paid};
+}
+function clearViewCaches(){
+  _anlTxCache=null;_txDateRangeData=null;_txFiltered=null;_txFilterActive=false;
+  retireConf=null;retireYears=[];_recurItems=[];_skTxMerged=[];
+  ['txSearchInput','txCatFilter','txDateFrom','txDateTo'].forEach(function(id){var el=$(id);if(el)el.value='';});
+}
+function refreshOpenViews(){
+  renderOverview();renderStocks();renderTx();renderAnalysis();
+  if($('leveragePage').style.display==='flex')renderLeverage();
+  if($('retirePage').style.display==='flex')renderRetire();
+  if($('settingsPage').style.display==='flex')renderSettings();
+}
+
 // ── Auth ──
 var _authMode='login'; // 'login' or 'signup'
 
@@ -93,7 +145,7 @@ function authLogin(){
 
   if(_authMode==='signup'){
     // check allowed emails first
-    sb.from('allowed_emails').select('email').eq('email',email.toLowerCase()).then(function(chk){
+    dbFrom('allowed_emails').select('email').eq('email',email.toLowerCase()).then(function(chk){
       if(!chk.data||chk.data.length===0){
         $('auth-login-btn').disabled=false;
         $('auth-err').textContent='此 Email 未獲授權註冊，請聯繫管理員';
@@ -137,7 +189,7 @@ function claimOrphanUsers(){
   return sb.auth.getUser().then(function(res){
     if(!res.data.user)return;
     var uid=res.data.user.id;
-    return sb.from('users').update({owner_auth_id:uid}).is('owner_auth_id',null).then(function(){});
+    return dbFrom('users').update({owner_auth_id:uid}).is('owner_auth_id',null).then(function(){});
   });
 }
 
@@ -241,6 +293,8 @@ function refreshPrices(silent){
     symMap[sym].push(it);
   });
   return sb.rpc('yahoo_batch_quotes',{symbols:symbols}).then(function(res){
+    if(res.error)throw new Error('報價更新失敗');
+    var writes=[];
     var prices=res.data||{};
     if(prices['TWD=X']) st.fxRate=prices['TWD=X'];
     // update all non-stock foreign currency accounts
@@ -252,7 +306,7 @@ function refreshPrices(silent){
           var newBal=Math.round(origBal*rate);
           if(it.category==='debt') newBal=-Math.abs(newBal);
           it.bal=newBal;
-          sb.from('accounts').update({balance:newBal}).eq('id',it.id).then(function(){});
+          writes.push(dbFrom('accounts').update({balance:newBal,stock_data:Object.assign({},it.sk,{fxRate:rate})}).eq('id',it.id).eq('user_id',st.userId));
         }
       }
     });
@@ -265,7 +319,7 @@ function refreshPrices(silent){
         var newBal=it.sk.isUs?Math.round(it.sk.shares*price*st.fxRate):Math.round(it.sk.shares*price);
         it.bal=newBal;
         updated.push(it);
-        sb.from('accounts').update({stock_data:it.sk,balance:newBal}).eq('id',it.id).then(function(){});
+        writes.push(dbFrom('accounts').update({stock_data:it.sk,balance:newBal}).eq('id',it.id).eq('user_id',st.userId));
       });
     });
     // Try .TWO for TW stocks that failed
@@ -284,13 +338,13 @@ function refreshPrices(silent){
           var newBal=Math.round(it.sk.shares*p2[sym]);
           it.bal=newBal;
           updated.push(it);
-          sb.from('accounts').update({stock_data:it.sk,balance:newBal}).eq('id',it.id).then(function(){});
+          writes.push(dbFrom('accounts').update({stock_data:it.sk,balance:newBal}).eq('id',it.id).eq('user_id',st.userId));
         }
       });
     }):Promise.resolve();
-    return twoPromise.then(function(){
+    return twoPromise.then(function(){return Promise.all(writes);}).then(function(){
       st.priceTs=new Date();
-      if(updated.length){renderOverview();renderStocks();updateHero();if(typeof renderLeverage==='function')renderLeverage();}
+      renderOverview();renderStocks();updateHero();if(typeof renderLeverage==='function')renderLeverage();
       if(btn){btn.disabled=false;btn.innerHTML='<svg viewBox="0 0 16 16" width="14" height="14"><path d="M13.65 2.35A7 7 0 1 0 15 8h-2a5 5 0 1 1-1.46-3.54L9 7h6V1z" fill="currentColor"/></svg> 更新報價';}
       if(topBtn){topBtn.classList.remove('spinning');topBtn.style.pointerEvents='';}
       var tsEl=$('sk-price-ts');
@@ -438,7 +492,7 @@ var THEME_COLORS=[
 ];
 
 function loadUsers(){
-  return sb.from('users').select('*').order('id').then(function(res){
+  return dbFrom('users').select('*').order('id').then(function(res){
     st.users=res.data||[];
     renderUserList();
   });
@@ -479,10 +533,11 @@ function renderUserList(){
 function switchUser(uid){
   if(uid===st.userId)return;
   st.userId=uid;
+  clearViewCaches();
   _heroChipCache={date:null,prevNW:null,stored:false};
   localStorage.setItem('ft_uid',uid);
   loadAll().then(function(){
-    renderOverview();renderStocks();renderTx();renderAnalysis();updateHero();
+    refreshOpenViews();
     refreshPrices(true);
     renderUserList();
     toast('已切換使用者');
@@ -592,7 +647,7 @@ function submitUserEdit(){
   if(uid){
     // edit existing
     uid=parseInt(uid);
-    sb.from('users').update({name:name,avatar:avatar}).eq('id',uid).then(function(){
+    dbFrom('users').update({name:name,avatar:avatar}).eq('id',uid).then(function(){
       if(theme) localStorage.setItem('ft_theme_'+uid,theme);
       else localStorage.removeItem('ft_theme_'+uid);
       $('m-user-edit').classList.remove('on');
@@ -603,14 +658,14 @@ function submitUserEdit(){
     // create new — attach to current auth user
     sb.auth.getUser().then(function(au){
     var authId=au.data&&au.data.user?au.data.user.id:null;
-    sb.from('users').insert({name:name,avatar:avatar,owner_auth_id:authId}).select().single().then(function(res){
+    dbFrom('users').insert({name:name,avatar:avatar,owner_auth_id:authId}).select().single().then(function(res){
       if(res.data&&res.data.id){
         var newId=res.data.id;
         if(theme) localStorage.setItem('ft_theme_'+newId,theme);
         // seed default categories for new user
-        sb.from('categories').select('name,icon,sort_order,cat_group').eq('user_id',1).order('sort_order').then(function(catRes){
+        dbFrom('categories').select('name,icon,sort_order,cat_group').eq('user_id',1).order('sort_order').then(function(catRes){
           var cats=(catRes.data||[]).map(function(c){return{user_id:newId,name:c.name,icon:c.icon,sort_order:c.sort_order,cat_group:c.cat_group};});
-          if(cats.length) sb.from('categories').insert(cats).then(function(){});
+          if(cats.length) dbFrom('categories').insert(cats).then(function(){});
         });
         $('m-user-edit').classList.remove('on');
         loadUsers();
@@ -640,11 +695,11 @@ function deleteUserConfirm(){
 function doDeleteUser(uid){
   // Delete all user data: transactions, accounts, categories, then user record
   Promise.all([
-    sb.from('transactions').delete().eq('user_id',uid),
-    sb.from('accounts').delete().eq('user_id',uid),
-    sb.from('categories').delete().eq('user_id',uid)
+    dbFrom('transactions').delete().eq('user_id',uid),
+    dbFrom('accounts').delete().eq('user_id',uid),
+    dbFrom('categories').delete().eq('user_id',uid)
   ]).then(function(){
-    return sb.from('users').delete().eq('id',uid);
+    return dbFrom('users').delete().eq('id',uid);
   }).then(function(){
     localStorage.removeItem('ft_theme_'+uid);
     $('m-user-edit').classList.remove('on');
@@ -698,6 +753,31 @@ function navTo(page){
   }
 }
 
+
+var _balanceQueue=Promise.resolve();
+function changeAccountBalance(id,delta){
+  var uid=st.userId;
+  var task=_balanceQueue.catch(function(){}).then(function(){
+    if(uid!==st.userId)throw new Error('使用者已切換，請重新操作。');
+    return dbFrom('accounts').select('*').eq('id',id).eq('user_id',uid).single().then(function(r){
+      var account=r.data;
+      if(!account)throw new Error('找不到帳戶。');
+      var balance=Number(account.balance)+Number(delta),upd={balance:balance};
+      var sk=account.stock_data;
+      if(sk&&sk.currency&&sk.currency!=='TWD'&&!sk.ticker){
+        sk=cloneStockData(sk);
+        var rate=sk.fxRate||_fxCache[sk.currency]||(sk.currency==='USD'?st.fxRate:0);
+        if(!(rate>0))throw new Error('缺少原幣匯率，無法更新帳戶。');
+        sk.originalBalance=(account.category==='debt'?Math.abs(balance):balance)/rate;
+        upd.stock_data=sk;
+      }
+      return dbFrom('accounts').update(upd).eq('id',id).eq('user_id',uid).select('id').single();
+    });
+  });
+  _balanceQueue=task;
+  return task;
+}
+
 // ── Supabase API helpers ──
 // Compatibility wrapper: translates old api(method, url, body) calls to Supabase
 function api(method,url,body){
@@ -705,7 +785,7 @@ function api(method,url,body){
   var m;
   // GET /api/accounts
   if(method==='GET'&&url==='/api/accounts'){
-    return sb.from('accounts').select('*').eq('user_id',st.userId).order('category').order('id').then(function(res){
+    return dbFrom('accounts').select('*').eq('user_id',st.userId).order('category').order('id').then(function(res){
       var result={};
       (res.data||[]).forEach(function(r){
         if(!result[r.category])result[r.category]=[];
@@ -718,7 +798,7 @@ function api(method,url,body){
   // POST /api/accounts
   if(method==='POST'&&url==='/api/accounts'){
     var row={user_id:st.userId,category:body.category,name:body.name,type:body.type,balance:body.balance,description:body.description||'',dot_color:body.dot_color||'#1db954',stat:body.stat!==false,group_name:body.group_name||null,stock_data:body.stock_data||null,loan_data:body.loan_data||null};
-    return sb.from('accounts').insert(row).select().single().then(function(res){
+    return dbFrom('accounts').insert(row).select().single().then(function(res){
       if(res.error){console.error('Account insert error:',res.error);toast('新增失敗: '+res.error.message);return{};}
       return res.data||{};
     });
@@ -732,17 +812,17 @@ function api(method,url,body){
         upd[f]=body[f];
       }
     });
-    return sb.from('accounts').update(upd).eq('id',aid).then(function(res){return{ok:true};});
+    return dbFrom('accounts').update(upd).eq('id',aid).eq('user_id',st.userId).select('id').single().then(function(res){return{ok:true};});
   }
   // DELETE /api/accounts/:id — also reverses paired transactions on other accounts
   m=url.match(/^\/api\/accounts\/(\d+)$/);
   if(method==='DELETE'&&m){
     var delId=parseInt(m[1]);
     var pairedCategories=['購入股票','賣股入帳','貸款撥入'];
-    return sb.from('accounts').select('name,stock_data').eq('id',delId).single().then(function(acctRes){
+    return dbFrom('accounts').select('name,stock_data').eq('id',delId).single().then(function(acctRes){
       var acctName=(acctRes.data&&acctRes.data.name)||'';
       var ticker=(acctRes.data&&acctRes.data.stock_data&&acctRes.data.stock_data.ticker)||acctName;
-      return sb.from('transactions').select('*').eq('user_id',st.userId).in('category',pairedCategories).then(function(txRes){
+      return dbFrom('transactions').select('*').eq('user_id',st.userId).in('category',pairedCategories).then(function(txRes){
         var paired=(txRes.data||[]).filter(function(tx){
           if(tx.account_id===delId) return false;
           var n=(tx.note||'').split(' ')[0];
@@ -752,24 +832,24 @@ function api(method,url,body){
         paired.forEach(function(tx){
           if(tx.account_id){
             reversePromises.push(
-              sb.from('accounts').select('balance').eq('id',tx.account_id).single().then(function(r){
-                if(r.data) return sb.from('accounts').update({balance:r.data.balance-tx.amount}).eq('id',tx.account_id);
+              dbFrom('accounts').select('balance').eq('id',tx.account_id).single().then(function(r){
+                if(r.data) return dbFrom('accounts').update({balance:r.data.balance-tx.amount}).eq('id',tx.account_id);
               })
             );
           }
-          reversePromises.push(sb.from('transactions').delete().eq('id',tx.id));
+          reversePromises.push(dbFrom('transactions').delete().eq('id',tx.id));
         });
         return Promise.all(reversePromises);
       });
     }).then(function(){
-      return sb.from('transactions').delete().eq('account_id',delId);
+      return dbFrom('transactions').delete().eq('account_id',delId);
     }).then(function(){
-      return sb.from('accounts').delete().eq('id',delId);
+      return dbFrom('accounts').delete().eq('id',delId);
     }).then(function(){return{ok:true};});
   }
   // GET /api/groups
   if(method==='GET'&&url==='/api/groups'){
-    return sb.from('groups').select('*').eq('user_id',st.userId).order('category').order('name').then(function(res){
+    return dbFrom('groups').select('*').eq('user_id',st.userId).order('category').order('name').then(function(res){
       var result={};
       (res.data||[]).forEach(function(r){
         if(!result[r.category])result[r.category]=[];
@@ -780,12 +860,12 @@ function api(method,url,body){
   }
   // POST /api/groups
   if(method==='POST'&&url==='/api/groups'){
-    return sb.from('groups').upsert({user_id:st.userId,category:body.category,name:body.name},{onConflict:'user_id,category,name'}).then(function(){return{ok:true};});
+    return dbFrom('groups').upsert({user_id:st.userId,category:body.category,name:body.name},{onConflict:'user_id,category,name'}).then(function(){return{ok:true};});
   }
   // GET /api/transactions?month=...
   if(method==='GET'&&url.indexOf('/api/transactions')===0){
     var monthMatch=url.match(/month=([^&]+)/);
-    var q=sb.from('transactions').select('*').eq('user_id',st.userId);
+    var q=dbFrom('transactions').select('*').eq('user_id',st.userId);
     if(monthMatch) q=q.like('date',monthMatch[1]+'%');
     return q.order('date',{ascending:false}).order('id',{ascending:false}).then(function(res){
       return (res.data||[]).map(function(r){r.recurring=!!r.recurring;return r;});
@@ -794,25 +874,25 @@ function api(method,url,body){
   // POST /api/transactions
   if(method==='POST'&&url==='/api/transactions'){
     var txRow={user_id:st.userId,date:body.date,name:body.name,category:body.category,amount:body.amount,note:body.note||'',icon:body.icon||'',recurring:!!body.recurring,account_id:body.account_id||null};
-    // Update account balance (skip if _skipBal flag is set)
-    var balUpdate=Promise.resolve();
-    if(body.account_id&&!body._skipBal){
-      balUpdate=sb.from('accounts').select('balance').eq('id',body.account_id).single().then(function(r){
-        if(r.data) return sb.from('accounts').update({balance:r.data.balance+body.amount}).eq('id',body.account_id);
+    return dbFrom('transactions').insert(txRow).select().single().then(function(res){
+      if(!res.data)throw new Error('交易沒有建立。');
+      if(!body.account_id||body._skipBal)return res.data;
+      return changeAccountBalance(body.account_id,body.amount).then(function(){return res.data;}).catch(function(error){
+        // Best-effort compensation; this is not a replacement for an atomic RPC.
+        return dbFrom('transactions').delete().eq('id',res.data.id).eq('user_id',st.userId).then(function(){throw error;});
       });
-    }
-    return Promise.all([
-      sb.from('transactions').insert(txRow).select().single().then(function(res){return res.data||{};}),
-      balUpdate
-    ]).then(function(arr){return arr[0];});
+    });
   }
+
   // PUT /api/transactions/:id
   m=url.match(/^\/api\/transactions\/(\d+)$/);
   if(method==='PUT'&&m){
     var tid=parseInt(m[1]);
     // Get old transaction for balance adjustment
-    return sb.from('transactions').select('*').eq('id',tid).single().then(function(oldRes){
+    return dbFrom('transactions').select('*').eq('id',tid).single().then(function(oldRes){
       var old=oldRes.data;
+      if(!old)throw new Error('找不到交易。');
+      if(['初始餘額','買入股票','賣出股票','餘額調整','負債沖銷','貸款利息紀錄'].indexOf(old.category)>=0)throw new Error('此為系統連動紀錄，請從原帳戶或股票庫存修改。');
       var upd={};
       ['date','name','category','amount','note','icon','recurring','account_id'].forEach(function(f){
         if(body.hasOwnProperty(f))upd[f]=body[f];
@@ -825,20 +905,14 @@ function api(method,url,body){
         var oldAcct=old.account_id,newAcct=body.hasOwnProperty('account_id')?body.account_id:oldAcct;
         if(oldAcct&&oldAcct===newAcct){
           var diff=newAmt-oldAmt;
-          if(diff!==0) balChain=sb.from('accounts').select('balance').eq('id',oldAcct).single().then(function(r){
-            if(r.data) return sb.from('accounts').update({balance:r.data.balance+diff}).eq('id',oldAcct);
-          });
+          if(diff!==0)balChain=changeAccountBalance(oldAcct,diff);
         } else {
-          if(oldAcct) balChain=balChain.then(function(){return sb.from('accounts').select('balance').eq('id',oldAcct).single().then(function(r){
-            if(r.data) return sb.from('accounts').update({balance:r.data.balance-oldAmt}).eq('id',oldAcct);
-          });});
-          if(newAcct) balChain=balChain.then(function(){return sb.from('accounts').select('balance').eq('id',newAcct).single().then(function(r){
-            if(r.data) return sb.from('accounts').update({balance:r.data.balance+newAmt}).eq('id',newAcct);
-          });});
+          if(oldAcct)balChain=balChain.then(function(){return changeAccountBalance(oldAcct,-oldAmt);});
+          if(newAcct)balChain=balChain.then(function(){return changeAccountBalance(newAcct,newAmt);});
         }
       }
       return balChain.then(function(){
-        return sb.from('transactions').update(upd).eq('id',tid).then(function(){return{ok:true};});
+        return dbFrom('transactions').update(upd).eq('id',tid).then(function(){return{ok:true};});
       });
     });
   }
@@ -847,61 +921,74 @@ function api(method,url,body){
   if(method==='DELETE'&&m){
     var dtid=parseInt(m[1]);
     var skipBalCats=['初始餘額','買入股票','賣出股票'];
-    return sb.from('transactions').select('*').eq('id',dtid).single().then(function(oldRes){
+    return dbFrom('transactions').select('*').eq('id',dtid).single().then(function(oldRes){
       var old=oldRes.data;
+      if(old&&['初始餘額','買入股票','賣出股票','餘額調整','負債沖銷','貸款利息紀錄'].indexOf(old.category)>=0)throw new Error('此為系統連動紀錄，請從原帳戶或股票庫存修改。');
       var balPromise=Promise.resolve();
       if(old&&old.account_id&&skipBalCats.indexOf(old.category)===-1){
-        balPromise=sb.from('accounts').select('balance').eq('id',old.account_id).single().then(function(r){
-          if(r.data) return sb.from('accounts').update({balance:r.data.balance-old.amount}).eq('id',old.account_id);
-        });
+        balPromise=changeAccountBalance(old.account_id,-old.amount);
       }
       return balPromise.then(function(){
-        return sb.from('transactions').delete().eq('id',dtid).then(function(){return{ok:true};});
+        return dbFrom('transactions').delete().eq('id',dtid).then(function(){return{ok:true};});
       });
     });
   }
   // GET /api/categories
   if(method==='GET'&&url==='/api/categories'){
-    return sb.from('categories').select('*').eq('user_id',st.userId).order('sort_order').order('id').then(function(res){return res.data||[];});
+    return dbFrom('categories').select('*').eq('user_id',st.userId).order('sort_order').order('id').then(function(res){return res.data||[];});
   }
   // POST /api/categories
   if(method==='POST'&&url==='/api/categories'){
-    return sb.from('categories').insert({user_id:st.userId,name:body.name,icon:body.icon||'📌',sort_order:body.sort_order||999,cat_group:body.cat_group||''}).then(function(){return{ok:true};});
+    return dbFrom('categories').insert({user_id:st.userId,name:body.name,icon:body.icon||'📌',sort_order:body.sort_order||999,cat_group:body.cat_group||''}).then(function(){return{ok:true};});
   }
   // PUT /api/categories/:id
   m=url.match(/^\/api\/categories\/(\d+)$/);
   if(method==='PUT'&&m){
     var cupd={};
     ['name','icon','sort_order','cat_group'].forEach(function(f){if(body.hasOwnProperty(f))cupd[f]=body[f];});
-    return sb.from('categories').update(cupd).eq('id',parseInt(m[1])).then(function(){return{ok:true};});
+    var catId=parseInt(m[1]),uid=st.userId;
+    return dbFrom('categories').select('*').eq('id',catId).eq('user_id',uid).single().then(function(res){
+      var old=res.data;
+      if(!old)throw new Error('找不到分類。');
+      return dbFrom('categories').select('id').eq('user_id',uid).eq('name',cupd.name||old.name).then(function(dupes){
+        if((dupes.data||[]).some(function(c){return c.id!==catId;}))throw new Error('已有相同名稱的分類。');
+        return dbFrom('categories').update(cupd).eq('id',catId).eq('user_id',uid).select('id').single();
+      }).then(function(){
+        var txUpd={};
+        if(cupd.name&&cupd.name!==old.name)txUpd.category=cupd.name;
+        if(Object.prototype.hasOwnProperty.call(cupd,'icon'))txUpd.icon=cupd.icon;
+        if(!Object.keys(txUpd).length)return;
+        return dbFrom('transactions').update(txUpd).eq('user_id',uid).eq('category',old.name).then(function(){
+          if(!cupd.name||cupd.name===old.name)return;
+          return dbFrom('transactions').update({name:cupd.name}).eq('user_id',uid).eq('category',cupd.name).eq('name',old.name);
+        });
+      }).then(function(){return Promise.all([loadTx(),loadCategories()]);}).then(function(){refreshOpenViews();return{ok:true};});
+    });
   }
   // DELETE /api/categories/:id
   m=url.match(/^\/api\/categories\/(\d+)$/);
   if(method==='DELETE'&&m){
-    return sb.from('categories').delete().eq('id',parseInt(m[1])).then(function(){return{ok:true};});
+    return dbFrom('categories').delete().eq('id',parseInt(m[1])).then(function(){return{ok:true};});
   }
   // POST /api/categories/reorder
   if(method==='POST'&&url==='/api/categories/reorder'){
     var ids=body.ids||[];
-    var promises=ids.map(function(cid,i){return sb.from('categories').update({sort_order:i}).eq('id',cid);});
+    var promises=ids.map(function(cid,i){return dbFrom('categories').update({sort_order:i}).eq('id',cid);});
     return Promise.all(promises).then(function(){return{ok:true};});
   }
   // POST /api/transfer
   if(method==='POST'&&url==='/api/transfer'){
     var tfAmt=Math.abs(body.amount);
+    if(!(tfAmt>0)||body.from_account_id===body.to_account_id)return Promise.reject(new Error('請選擇不同帳戶及有效金額。'));
     var tfDate=body.date||'';
     var tfNote=body.note||'';
     return Promise.all([
-      sb.from('transactions').insert({user_id:st.userId,date:tfDate,name:'轉帳',category:'轉帳',amount:-tfAmt,note:tfNote,icon:'🔄',recurring:false,account_id:body.from_account_id}),
-      sb.from('transactions').insert({user_id:st.userId,date:tfDate,name:'轉帳',category:'轉帳',amount:tfAmt,note:tfNote,icon:'🔄',recurring:false,account_id:body.to_account_id})
+      dbFrom('transactions').insert({user_id:st.userId,date:tfDate,name:'轉帳',category:'轉帳',amount:-tfAmt,note:tfNote,icon:'🔄',recurring:false,account_id:body.from_account_id}),
+      dbFrom('transactions').insert({user_id:st.userId,date:tfDate,name:'轉帳',category:'轉帳',amount:tfAmt,note:tfNote,icon:'🔄',recurring:false,account_id:body.to_account_id})
     ]).then(function(){
       return Promise.all([
-        sb.from('accounts').select('balance').eq('id',body.from_account_id).single().then(function(r){
-          if(r.data) return sb.from('accounts').update({balance:r.data.balance-tfAmt}).eq('id',body.from_account_id);
-        }),
-        sb.from('accounts').select('balance').eq('id',body.to_account_id).single().then(function(r){
-          if(r.data) return sb.from('accounts').update({balance:r.data.balance+tfAmt}).eq('id',body.to_account_id);
-        })
+        changeAccountBalance(body.from_account_id,-tfAmt),
+        changeAccountBalance(body.to_account_id,tfAmt)
       ]);
     }).then(function(){return{ok:true};});
   }
@@ -930,19 +1017,19 @@ function _clientAutoPayLoans(){
       var repayType=ld.repay_type||'本息平均攤還';
       var isInt=repayType.indexOf('只繳利息')>=0;
       // check if already paid this month
-      return sb.from('transactions').select('id',{count:'exact',head:true}).eq('account_id',it.id).like('date',monthStr+'%').in('category',['負債沖銷','財務費用']).then(function(res){
+      return dbFrom('transactions').select('id',{count:'exact',head:true}).eq('account_id',it.id).like('date',monthStr+'%').in('category',['負債沖銷','財務費用','貸款利息紀錄']).then(function(res){
         if((res.count||0)>0) return;
         var principal=ld.principal||0,rate=ld.annual_rate||ld.interest_rate||0;
         var totalMonths=ld.total_months||0,startDate=ld.start_date||'';
         if(isInt){
           var mi=Math.round(principal*rate/100/12*100)/100;
           var intOps=[
-            sb.from('transactions').insert({user_id:st.userId,date:todayStr,name:it.name+' 利息',category:'財務費用',amount:-mi,note:'月利息（只繳利息）',icon:'💸',recurring:true,account_id:it.id})
+            dbFrom('transactions').insert({user_id:st.userId,date:todayStr,name:it.name+' 利息',category:ld.pay_from_id?'貸款利息紀錄':'財務費用',amount:-mi,note:'月利息（只繳利息）',icon:'💸',recurring:true,account_id:it.id})
           ];
           // deduct from pay_from account
           var intPayFrom=ld.pay_from_id?allAccounts.find(function(a){return a.id===ld.pay_from_id;}):null;
           if(intPayFrom){
-            intOps.push(sb.from('transactions').insert({user_id:st.userId,date:todayStr,name:it.name+' 扣款',category:'財務費用',amount:-mi,note:'自動扣繳利息',icon:'🏦',recurring:true,account_id:intPayFrom.id}));
+            intOps.push(api('POST','/api/transactions',{date:todayStr,name:it.name+' 扣款',category:'財務費用',amount:-mi,note:'自動扣繳利息',icon:'🏦',recurring:true,account_id:intPayFrom.id}));
           }
           return Promise.all(intOps).then(function(){
             created.push({account:it.name,period:0,principal:0,interest:mi});
@@ -956,15 +1043,16 @@ function _clientAutoPayLoans(){
         var sched=levAmortSchedule(principal,rate,totalMonths,ld.pmt_override,repayType);
         var entry=sched[currentPeriod-1];
         var pmtOps=[
-          sb.from('transactions').insert({user_id:st.userId,date:todayStr,name:it.name+' 本金',category:'負債沖銷',amount:entry.principal,note:'第'+currentPeriod+'期 本金',icon:'🏦',recurring:true,account_id:it.id}),
-          sb.from('transactions').insert({user_id:st.userId,date:todayStr,name:it.name+' 利息',category:'財務費用',amount:-entry.interest,note:'第'+currentPeriod+'期 利息',icon:'💸',recurring:true,account_id:it.id}),
-          sb.from('accounts').update({balance:it.bal+entry.principal,loan_data:Object.assign({},ld,{paid_periods:currentPeriod})}).eq('id',it.id)
+          dbFrom('transactions').insert({user_id:st.userId,date:todayStr,name:it.name+' 本金',category:'負債沖銷',amount:entry.principal,note:'第'+currentPeriod+'期 本金',icon:'🏦',recurring:true,account_id:it.id}),
+          dbFrom('transactions').insert({user_id:st.userId,date:todayStr,name:it.name+' 利息',category:ld.pay_from_id?'貸款利息紀錄':'財務費用',amount:-entry.interest,note:'第'+currentPeriod+'期 利息',icon:'💸',recurring:true,account_id:it.id}),
+          dbFrom('accounts').update({balance:it.bal+entry.principal,loan_data:Object.assign({},ld,{paid_periods:currentPeriod})}).eq('id',it.id)
         ];
         // deduct total payment from pay_from account
         var pmtPayFrom=ld.pay_from_id?allAccounts.find(function(a){return a.id===ld.pay_from_id;}):null;
         if(pmtPayFrom){
           var totalPmt=entry.principal+entry.interest;
-          pmtOps.push(sb.from('transactions').insert({user_id:st.userId,date:todayStr,name:it.name+' 扣款',category:'財務費用',amount:-totalPmt,note:'第'+currentPeriod+'期 自動扣繳（本金+利息）',icon:'🏦',recurring:true,account_id:pmtPayFrom.id}));
+          pmtOps.push(api('POST','/api/transactions',{date:todayStr,name:it.name+' 本金扣款',category:'貸款扣款',amount:-entry.principal,note:'第'+currentPeriod+'期 本金',icon:'🏦',recurring:true,account_id:pmtPayFrom.id}));
+          pmtOps.push(api('POST','/api/transactions',{date:todayStr,name:it.name+' 利息扣款',category:'財務費用',amount:-entry.interest,note:'第'+currentPeriod+'期 利息',icon:'🏦',recurring:true,account_id:pmtPayFrom.id}));
         }
         return Promise.all(pmtOps).then(function(){
           created.push({account:it.name,period:currentPeriod,principal:entry.principal,interest:entry.interest});
@@ -980,7 +1068,9 @@ function loadAll(){
 }
 
 function loadAccounts(){
-  return sb.from('accounts').select('*').eq('user_id',st.userId).order('category').order('id').then(function(res){
+  var uid=st.userId;
+  return dbFrom('accounts').select('*').eq('user_id',st.userId).order('category').order('id').then(function(res){
+    if(uid!==st.userId)return;
     allAccounts=[];
     ['liquid','invest','fixed','recv','debt'].forEach(function(k){data[k].items=[];});
     (res.data||[]).forEach(function(r){
@@ -997,7 +1087,9 @@ function loadAccounts(){
 }
 
 function loadGroups(){
-  return sb.from('groups').select('*').eq('user_id',st.userId).order('category').order('name').then(function(res){
+  var uid=st.userId;
+  return dbFrom('groups').select('*').eq('user_id',st.userId).order('category').order('name').then(function(res){
+    if(uid!==st.userId)return;
     ['liquid','invest','fixed','recv','debt'].forEach(function(k){data[k].groups={};});
     (res.data||[]).forEach(function(r){
       if(data[r.category]) data[r.category].groups[r.name]=true;
@@ -1006,17 +1098,24 @@ function loadGroups(){
 }
 
 function loadTx(){
+  var uid=st.userId,year=st.curYear,month=st.curMonth;
   var prefix=st.curYear+'-'+MONTHS[st.curMonth];
-  return sb.from('transactions').select('*').eq('user_id',st.userId).like('date',prefix+'%').order('date',{ascending:false}).order('id',{ascending:false}).then(function(res){
+  return dbFrom('transactions').select('*').eq('user_id',st.userId).like('date',prefix+'%').order('date',{ascending:false}).order('id',{ascending:false}).then(function(res){
+    if(uid!==st.userId||year!==st.curYear||month!==st.curMonth)return;
     txs=(res.data||[]).map(function(r){
       return {id:r.id,date:r.date,name:r.name,cat:r.category,amt:r.amount,note:r.note||'',icon:r.icon||'',rec:!!r.recurring,account_id:r.account_id};
     });
+    var reloads=[];
+    if(_anlPeriod!=='month')reloads.push(_loadAnlPeriodData(_anlPeriod));
+    if(_txDateRangeData)reloads.push(filterTxDateRange());
+    return Promise.all(reloads);
   });
 }
 
 function loadCategories(){
-  return sb.from('categories').select('*').eq('user_id',st.userId).order('sort_order').order('id').then(function(res){
-    categories=res.data||[];
+  var uid=st.userId;
+  return dbFrom('categories').select('*').eq('user_id',st.userId).order('sort_order').order('id').then(function(res){
+    if(uid===st.userId)categories=res.data||[];
   });
 }
 
@@ -1094,7 +1193,7 @@ function upsertNetWorthSnapshot(){
   var month=new Date().toISOString().slice(0,7);
   var bd=calcNetWorthBreakdown();
   var nw=bd.liquid+bd.invest+bd.fixed+bd.recv+bd.debt;
-  return sb.from('net_worth_snapshots').upsert({
+  return dbFrom('net_worth_snapshots').upsert({
     user_id:st.userId,
     month:month,
     net_worth:nw,
@@ -1106,7 +1205,7 @@ function upsertNetWorthSnapshot(){
 
 function loadNetWorthSnapshots(){
   if(!st.userId) return Promise.resolve([]);
-  return sb.from('net_worth_snapshots').select('*').eq('user_id',st.userId).order('month').then(function(res){
+  return dbFrom('net_worth_snapshots').select('*').eq('user_id',st.userId).order('month').then(function(res){
     return res.data||[];
   });
 }
@@ -1130,7 +1229,7 @@ function _updateHeroChip(nw,el){
     _renderChipValue(nw,_heroChipCache.prevNW,el);
     // update today's snapshot in background (always keep latest)
     if(_heroChipCache.stored){
-      sb.from('net_worth_snapshots').update({net_worth:nw}).eq('user_id',st.userId).eq('month',today).then(function(){});
+      dbFrom('net_worth_snapshots').update({net_worth:nw}).eq('user_id',st.userId).eq('month',today).then(function(){});
     }
     return;
   }
@@ -1138,7 +1237,7 @@ function _updateHeroChip(nw,el){
   // get yesterday (or most recent past 7 days)
   var dates=[];
   for(var di=1;di<=7;di++){var d=new Date();d.setDate(d.getDate()-di);dates.push(d.toISOString().slice(0,10));}
-  sb.from('net_worth_snapshots').select('month,net_worth').eq('user_id',st.userId).in('month',[today].concat(dates)).then(function(res){
+  dbFrom('net_worth_snapshots').select('month,net_worth').eq('user_id',st.userId).in('month',[today].concat(dates)).then(function(res){
     var rows=res.data||[];
     var todayRow=rows.find(function(r){return r.month===today;});
     var prevNW=null;
@@ -1152,10 +1251,10 @@ function _updateHeroChip(nw,el){
     // upsert today's snapshot
     if(!todayRow){
       _heroChipCache.stored=true;
-      sb.from('net_worth_snapshots').insert({user_id:st.userId,month:today,net_worth:nw}).then(function(){});
+      dbFrom('net_worth_snapshots').insert({user_id:st.userId,month:today,net_worth:nw}).then(function(){});
     } else {
       _heroChipCache.stored=true;
-      sb.from('net_worth_snapshots').update({net_worth:nw}).eq('user_id',st.userId).eq('month',today).then(function(){});
+      dbFrom('net_worth_snapshots').update({net_worth:nw}).eq('user_id',st.userId).eq('month',today).then(function(){});
     }
     _renderChipValue(nw,prevNW,el);
   }).catch(function(){
@@ -1347,7 +1446,7 @@ function ctxAction(act){
     if(confirm('確定刪除「'+it.name+'」？')){
       api('DELETE','/api/accounts/'+it.id).then(function(){
         return Promise.all([loadAccounts(),loadTx()]);
-      }).then(function(){renderOverview();renderStocks();renderTx();toast('已刪除');});
+      }).then(function(){renderOverview();renderStocks();renderTx();renderAnalysis();toast('已刪除');});
     }
   }
   else if(act==='payoff'){openPayoff(key,idx);}
@@ -1409,20 +1508,20 @@ function submitPayoff(){
   var newLoan=isFull
     ?Object.assign({},it.loan,{status:'paid_off',payoff_date:dateStr})
     :Object.assign({},it.loan);
-  api('PUT','/api/accounts/'+it.id,{balance:newBal,loan_data:newLoan}).then(function(){
+  return api('PUT','/api/accounts/'+it.id,{balance:newBal,loan_data:newLoan}).then(function(){
     it.bal=newBal;it.loan=newLoan;
     var txName=isFull?it.name+' 提前還清':it.name+' 部分還款';
     var txNote=isFull?'提前還清':'部分還款，剩餘 NT$ '+fmtN(Math.abs(newBal));
     var txIcon=isFull?'✅':'💰';
     var p=createTx&&amount>0
-      ?api('POST','/api/transactions',{date:dateStr,name:txName,category:'負債沖銷',amount:amount,note:txNote,icon:txIcon,account_id:it.id})
+      ?api('POST','/api/transactions',{date:dateStr,name:txName,category:'負債沖銷',amount:amount,note:txNote,icon:txIcon,account_id:it.id,_skipBal:true})
       :Promise.resolve();
     return p;
   }).then(function(){
     $('m-payoff').classList.remove('on');
-    return loadTx();
+    return Promise.all([loadAccounts(),loadTx()]);
   }).then(function(){
-    renderOverview();renderTx();
+    renderOverview();renderTx();renderAnalysis();
     if($('leveragePage').style.display==='flex')renderLeverage();
     toast(isFull?'✓ 已還清 '+it.name:'✓ 已還款 NT$ '+fmtN(amount));
   });
@@ -1466,7 +1565,7 @@ function submitRefi(){
     pay_day:payDay,start_date:startDate,paid_periods:0,
     refinanced_from:it.id
   };
-  api('POST','/api/accounts',{
+  return api('POST','/api/accounts',{
     category:'debt',name:newName,type:it.type,balance:-Math.abs(newBal),
     description:monthly?('每月'+(isInt?'利息':'還')+' '+Math.round(monthly).toLocaleString()):'',
     dot_color:nextDot(data.debt.items),stat:it.stat,loan_data:newLoanData
@@ -1477,14 +1576,14 @@ function submitRefi(){
       it.bal=0;it.loan=oldLoan;
       return api('POST','/api/transactions',{
         date:dateStr,name:it.name+' 代償',category:'負債沖銷',
-        amount:remaining,note:'代償 → '+newName,icon:'🔄',account_id:it.id
+        amount:remaining,note:'代償 → '+newName,icon:'🔄',account_id:it.id,_skipBal:true
       });
     });
   }).then(function(){
     $('m-refi').classList.remove('on');
-    return loadAccounts();
+    return Promise.all([loadAccounts(),loadTx()]);
   }).then(function(){
-    renderOverview();renderStocks();
+    renderOverview();renderStocks();renderTx();renderAnalysis();
     if($('leveragePage').style.display==='flex')renderLeverage();
     toast('✓ 代償完成，已建立「'+newName+'」');
   });
@@ -1805,11 +1904,11 @@ function submitAddAcct(){
       var nFee=osk.fee+fee;
       var nCur=curPrice;
       var nMkt=isUs?Math.round(tShares*nCur*st.fxRate):Math.round(tShares*nCur);
-      var uSk=Object.assign({},osk,{shares:tShares,avgPrice:Math.round(nAvg*1000)/1000,paid:nPaid,fee:nFee,curPrice:nCur});
+      var uSk=Object.assign(cloneStockData(osk),{shares:tShares,avgPrice:Math.round(nAvg*1000)/1000,paid:nPaid,fee:nFee,curPrice:nCur});
       if(addFundSrc) _addFundSource(uSk,addFundSrc,sh,paidNative);
       var addPaidTWD=payload._paidTWD;
       var addSkSrcId2=payload._skSrcId;
-      sb.from('accounts').update({balance:nMkt,stock_data:uSk}).eq('id',existingAdd.id).then(function(){
+      dbFrom('accounts').update({balance:nMkt,stock_data:uSk}).eq('id',existingAdd.id).then(function(){
         existingAdd.sk=uSk;existingAdd.bal=nMkt;
         var proms=[];
         proms.push(api('POST','/api/transactions',{
@@ -1829,7 +1928,7 @@ function submitAddAcct(){
           return Promise.all([loadAccounts(),loadTx()]);
         });
       }).then(function(){
-        renderOverview();renderStocks();renderTx();toast('✓ '+addTicker+' 已加碼');
+        renderOverview();renderStocks();renderTx();renderAnalysis();toast('✓ '+addTicker+' 已加碼');
       });
       return;// skip normal account creation
     }
@@ -2099,8 +2198,8 @@ function submitEdit(){
     var eCurPrice=it.sk.curPrice||ePr;
     var eIsUs=it.sk.isUs;
     var editFundSrc=parseInt($('edit-fund-source').value)||null;
-    var _editSk=Object.assign({},it.sk,{leverage:newLev,shares:eSh,avgPrice:ePr,paid:ePaid,fee:eFee});
-    if(!_editSk.fundSources) _editSk.fundSources=Object.assign({},_getFundSources(it.sk));
+    var _editSk=Object.assign(cloneStockData(it.sk),{leverage:newLev,shares:eSh,avgPrice:ePr,paid:ePaid,fee:eFee});
+    editStockFunding(it.sk,_editSk,editFundSrc);
     payload.stock_data=_editSk;
     // auto-calculate balance as market value
     if(eIsUs){
@@ -2114,10 +2213,10 @@ function submitEdit(){
   if(it.loan&&!editLocked){
     var repayType=$('edit-repay-type').value;
     var newStartDate=$('edit-loan-start').value||it.loan.start_date||'';
-    var editPayFrom=parseInt($('edit-pay-from-id').value)||it.loan.pay_from_id||null;
+    var editPayFrom=parseInt($('edit-pay-from-id').value)||null;
     var newLoan=Object.assign({},it.loan,{
       repay_type:repayType,
-      annual_rate:parseFloat($('edit-rate').value)||it.loan.annual_rate||0,
+      annual_rate:parseFloat($('edit-rate').value)||0,
       total_months:parseInt($('edit-months').value)||it.loan.total_months||0,
       pay_day:parseInt($('edit-pay-day').value)||it.loan.pay_day||1,
       start_date:newStartDate,
@@ -2141,9 +2240,9 @@ function submitEdit(){
     payload.loan_data.pledged_stocks=getPledgeStocksData('edit');
     payload.loan_data.loan_amount=Math.abs(newBal);
   }
-  api('PUT','/api/accounts/'+it.id,payload).then(function(){
+  return api('PUT','/api/accounts/'+it.id,payload).then(function(){
     it.name=newName;it.bal=newBal;it.desc=newDesc;it.stat=newStat;
-    if(payload.stock_data)it.sk=payload.stock_data;
+    if(Object.prototype.hasOwnProperty.call(payload,'stock_data')){it.sk=payload.stock_data;it.ccy=(payload.stock_data&&payload.stock_data.currency)||'TWD';}
     if(payload.loan_data)it.loan=payload.loan_data;
     // auto adjustment transaction if balance changed
     var diff=newBal-oldBal;
@@ -2151,12 +2250,12 @@ function submitEdit(){
       return api('POST','/api/transactions',{
         date:new Date().toISOString().slice(0,10),
         name:'餘額調整',category:'餘額調整',amount:diff,
-        note:newName,icon:'📝',recurring:false,account_id:it.id
-      }).then(function(){return loadTx();});
+        note:newName,icon:'📝',recurring:false,account_id:it.id,_skipBal:true
+      }).then(function(){return Promise.all([loadAccounts(),loadTx()]);});
     }
   }).then(function(){
     $('m-edit').classList.remove('on');
-    renderOverview();renderStocks();renderTx();
+    renderOverview();renderStocks();renderTx();renderAnalysis();
     if($('leveragePage').style.display==='flex')renderLeverage();
     toast('✓ 已儲存');
   });
@@ -2167,7 +2266,7 @@ function submitDelAcct(){
   api('DELETE','/api/accounts/'+it.id).then(function(){
     return Promise.all([loadAccounts(),loadTx()]);
   }).then(function(){
-    $('m-edit').classList.remove('on');renderOverview();renderStocks();renderTx();toast('已刪除');
+    $('m-edit').classList.remove('on');renderOverview();renderStocks();renderTx();renderAnalysis();toast('已刪除');
   });
 }
 // pledge stock selector
@@ -2248,7 +2347,7 @@ function submitGrp(){
 
 // stocks
 function renderStocks(){
-  var all=data.invest.items.filter(function(it){return it.sk;});
+  var all=data.invest.items.filter(function(it){return it.sk&&it.sk.ticker;});
   var tw=all.filter(function(it){return !it.sk.isUs;});
   var us=all.filter(function(it){return it.sk.isUs;});
   var totVal=all.reduce(function(s,it){return s+Math.round(it.sk.shares*it.sk.curPrice*(it.sk.isUs?st.fxRate:1));},0);
@@ -2423,7 +2522,7 @@ function renderSkTxHistory(){
   if(isCurMonth){
     _renderSkTxRows(el,badge,txs.filter(function(t){return stockTxCats.indexOf(t.cat)>=0;}));
   } else {
-    sb.from('transactions').select('*').eq('user_id',st.userId).like('date',prefix+'%').order('date',{ascending:false}).order('id',{ascending:false}).then(function(res){
+    dbFrom('transactions').select('*').eq('user_id',st.userId).like('date',prefix+'%').order('date',{ascending:false}).order('id',{ascending:false}).then(function(res){
       var rows=(res.data||[]).map(function(r){
         return {id:r.id,date:r.date,name:r.name,cat:r.category,amt:r.amount,note:r.note||'',icon:r.icon||'',account_id:r.account_id};
       }).filter(function(t){return stockTxCats.indexOf(t.cat)>=0;});
@@ -2481,146 +2580,81 @@ function _renderSkTxRows(el,badge,skTxs){
   });
   el.innerHTML=html;
 }
+function stockLedgerState(rows,sk){
+  var state={shares:0,cost:0,paid:0,fee:0};
+  rows.slice().sort(function(a,b){return a.date.localeCompare(b.date)||a.id-b.id;}).forEach(function(t){
+    if(['初始餘額','買入股票','賣出股票'].indexOf(t.category)<0)return;
+    var match=(t.note||'').match(/([+-]?\d+(?:\.\d+)?)股.*?@\s*(\d+(?:\.\d+)?)/);
+    if(!match)throw new Error('歷史交易缺少股數或價格，需先核對庫存。');
+    var shares=Math.abs(Number(match[1])),price=Number(match[2]);
+    if(t.category==='賣出股票'){
+      if(shares>state.shares+0.000001)throw new Error('刪除後會出現先賣後買或負庫存，無法刪除。');
+      var ratio=state.shares?1-shares/state.shares:0;
+      state.shares-=shares;state.cost*=ratio;state.paid*=ratio;state.fee*=ratio;
+    } else {
+      if(sk.isUs)throw new Error('美股歷史交易缺少成交匯率，需先完成歷史資料核對。');
+      if(t.category==='初始餘額')throw new Error('初始建倉缺少完整成本紀錄，請先核對庫存。');
+      var paid=Math.abs(t.amount);
+      state.shares+=shares;state.cost+=shares*price;state.paid+=paid;state.fee+=paid-shares*price;
+    }
+  });
+  return state;
+}
+function deleteStockTransaction(txId){
+  var uid=st.userId;
+  return dbFrom('transactions').select('*').eq('user_id',uid).then(function(res){
+    var rows=res.data||[],tx=rows.find(function(t){return t.id===txId;});
+    if(!tx)throw new Error('找不到交易。');
+    var account=allAccounts.find(function(a){return a.id===tx.account_id;});
+    if(!account||!account.sk)throw new Error('找不到持股帳戶。');
+    var normalized=rows.map(function(t){return{id:t.id,date:t.date,cat:t.category,amt:t.amount,note:t.note,account_id:t.account_id};});
+    var entry=_mergeStockTxs(normalized).find(function(e){return e.txIds[0]===txId;});
+    if(!entry||entry.ambiguous)throw new Error('同日有相同交易，需先確認對應收付款，未刪除資料。');
+    var stockRows=rows.filter(function(t){return t.account_id===account.id;});
+    var before=stockLedgerState(stockRows,account.sk);
+    if(Math.abs(before.shares-account.sk.shares)>0.000001||Math.abs(before.paid-(account.sk.paid||0))>1||Math.abs(before.cost-before.shares*account.sk.avgPrice)>Math.max(1,before.shares*0.001))throw new Error('交易歷史與現有庫存不一致，請先核對；未刪除資料。');
+    if(Object.keys(_getFundSources(account.sk)).length)throw new Error('此持股有貸款資金配置，需先核對交易與資金來源；未刪除資料。');
+    var after=stockLedgerState(stockRows.filter(function(t){return t.id!==txId;}),account.sk);
+    var sk=cloneStockData(account.sk);sk.shares=after.shares;sk.avgPrice=after.shares?after.cost/after.shares:0;sk.paid=after.paid;sk.fee=after.fee;
+    var value=Math.round(after.shares*(sk.curPrice||sk.avgPrice));
+    if(uid!==st.userId)throw new Error('使用者已切換，未刪除資料。');
+    // The DB-backed replacement will make these steps atomic across devices.
+    var paired=entry.txIds.slice(1),chain=Promise.resolve();
+    paired.forEach(function(id){chain=chain.then(function(){return api('DELETE','/api/transactions/'+id);});});
+    return chain.then(function(){return dbFrom('transactions').delete().eq('id',txId).eq('user_id',uid);}).then(function(){
+      return dbFrom('accounts').update({balance:value,stock_data:sk}).eq('id',account.id).eq('user_id',uid).select('id').single();
+    });
+  }).then(function(){return loadAll();}).then(function(){refreshOpenViews();toast('已刪除股票交易');});
+}
 function delStockTx(mi){
   var entry=_skTxMerged[mi];
-  if(!entry||!entry.txIds||!entry.txIds.length)return;
-  if(!confirm('確定刪除此筆'+( entry.action==='buy'?'買入':'賣出')+'紀錄？'))return;
-  var acct=allAccounts.find(function(a){return a.id===entry.stockAcctId;});
-  var delPromises=entry.txIds.map(function(tid){return api('DELETE','/api/transactions/'+tid);});
-  Promise.all(delPromises).then(function(){
-    if(!acct||!acct.sk) return;
-    var sk=acct.sk;
-    var sh=parseFloat(entry.shares)||0;
-    var noteMatch=(entry.action==='buy')?entry.ticker:'';
-    if(entry.action==='buy'){
-      // parse price from note: "ticker +shares股 @price"
-      return sb.from('transactions').select('note').eq('id',entry.txIds[0]).maybeSingle().then(function(){
-        // tx already deleted, parse from entry data
-        var newShares=sk.shares-sh;
-        if(newShares<=0){
-          return sb.from('accounts').delete().eq('id',acct.id);
-        }
-        var oldTotalCost=sk.shares*sk.avgPrice;
-        var removedCost=sh*sk.avgPrice;
-        var newAvg=newShares>0?(oldTotalCost-removedCost)/newShares:0;
-        var newPaid=sk.paid*(newShares/sk.shares);
-        var newFee=sk.fee*(newShares/sk.shares);
-        var isUs=sk.isUs;
-        var newMkt=isUs?Math.round(newShares*(sk.curPrice||sk.avgPrice)*st.fxRate):Math.round(newShares*(sk.curPrice||sk.avgPrice));
-        var uSk=Object.assign({},sk,{shares:newShares,avgPrice:Math.round(newAvg*1000)/1000,paid:newPaid,fee:newFee});
-        return sb.from('accounts').update({balance:newMkt,stock_data:uSk}).eq('id',acct.id);
-      });
-    }
-    if(entry.action==='sell'){
-      var newShares=sk.shares+sh;
-      var newPaid=sk.paid*(newShares/Math.max(sk.shares,1));
-      var newFee=sk.fee*(newShares/Math.max(sk.shares,1));
-      var isUs=sk.isUs;
-      var newMkt=isUs?Math.round(newShares*(sk.curPrice||sk.avgPrice)*st.fxRate):Math.round(newShares*(sk.curPrice||sk.avgPrice));
-      var uSk=Object.assign({},sk,{shares:newShares,paid:newPaid,fee:newFee});
-      return sb.from('accounts').update({balance:newMkt,stock_data:uSk}).eq('id',acct.id);
-    }
-  }).then(function(){
-    return Promise.all([loadAccounts(),loadTx()]);
-  }).then(function(){
-    renderOverview();renderStocks();renderTx();toast('已刪除');
-  });
+  if(!entry)return;
+  if(entry.ambiguous){toast('同日有相同交易，請先核對對應收付款。');return;}
+  if(!confirm('確定刪除此筆股票交易及對應收付款？'))return;
+  return deleteStockTransaction(entry.txIds[0]);
 }
 function _mergeStockTxs(txList){
-  // Group buy/sell pairs: "買入股票" on stock acct + "購入股票" on source acct → one entry
-  // Similarly for sell: "賣出股票" on stock acct + "賣股入帳" on dest acct → one entry
   var used={},result=[];
-  // Index by date for pairing
-  var byDate={};
-  txList.forEach(function(t,i){
-    if(!byDate[t.date])byDate[t.date]=[];
-    byDate[t.date].push({t:t,i:i});
-  });
-  txList.forEach(function(t,i){
-    if(used[i])return;
-    // 初始餘額 (init) - show as 建倉 with shares & source account
-    if(t.cat==='初始餘額'){
-      used[i]=true;
-      var ticker=_extractTicker(t);
-      var acct=allAccounts.find(function(a){return a.id===t.account_id;});
-      // check if this is a stock account init
-      var isStockInit=acct&&acct.sk;
-      if(!isStockInit){
-        // non-stock 初始餘額 - skip from stock tx list
-        return;
-      }
-      var shares='';
-      if(t.note){var sm=t.note.match(/\+?([\d.]+)\s*股/);if(sm)shares=sm[1];}
-      // fallback: get shares from current stock data if note doesn't have it
-      if(!shares&&acct&&acct.sk)shares=String(acct.sk.shares);
-      var srcName='';
-      // Mark paired "購入股票" on same date and extract source account
-      if(byDate[t.date]){
-        byDate[t.date].forEach(function(o){
-          if(o.i!==i&&!used[o.i]&&o.t.cat==='購入股票'){
-            var oTk=_extractTicker(o.t);
-            if(oTk===ticker||(acct&&oTk===acct.name)){
-              used[o.i]=true;
-              var sa=allAccounts.find(function(a){return a.id===o.t.account_id;});
-              if(sa)srcName=sa.name;
-            }
-          }
-        });
-      }
-      result.push({date:t.date,ticker:acct?acct.name:ticker,action:'init',shares:shares,totalAmt:Math.abs(t.amt),stockAcctId:t.account_id,srcName:srcName,txIds:[t.id]});
-      return;
-    }
-    // 買入股票 - find paired 購入股票
-    if(t.cat==='買入股票'){
-      used[i]=true;
-      var ticker=_extractTicker(t);
-      var shares='';
-      if(t.note){var sm=t.note.match(/\+?([\d.]+)\s*股/);if(sm)shares=sm[1];}
-      var acct=allAccounts.find(function(a){return a.id===t.account_id;});
-      var srcName='';
-      // find paired 購入股票 (source account deduction)
-      if(byDate[t.date]){
-        byDate[t.date].forEach(function(o){
-          if(o.i!==i&&!used[o.i]&&o.t.cat==='購入股票'&&_extractTicker(o.t)===ticker){
-            used[o.i]=true;
-            var sa=allAccounts.find(function(a){return a.id===o.t.account_id;});
-            if(sa)srcName=sa.name;
-          }
-        });
-      }
-      var buyTxIds=[t.id];
-      if(byDate[t.date]){byDate[t.date].forEach(function(o){if(used[o.i]&&o.i!==i&&o.t.cat==='購入股票')buyTxIds.push(o.t.id);});}
-      result.push({date:t.date,ticker:acct?acct.name:ticker,action:'buy',shares:shares,totalAmt:Math.abs(t.amt),stockAcctId:t.account_id,srcName:srcName,txIds:buyTxIds});
-      return;
-    }
-    // 賣出股票 - find paired 賣股入帳
-    if(t.cat==='賣出股票'){
-      used[i]=true;
-      var ticker=_extractTicker(t);
-      var shares='';
-      if(t.note){var sm=t.note.match(/-?([\d.]+)\s*股/);if(sm)shares=sm[1];}
-      var acct=allAccounts.find(function(a){return a.id===t.account_id;});
-      var destName='';
-      if(byDate[t.date]){
-        byDate[t.date].forEach(function(o){
-          if(o.i!==i&&!used[o.i]&&o.t.cat==='賣股入帳'&&_extractTicker(o.t)===ticker){
-            used[o.i]=true;
-            var da=allAccounts.find(function(a){return a.id===o.t.account_id;});
-            if(da)destName=da.name;
-          }
-        });
-      }
-      var sellTxIds=[t.id];
-      if(byDate[t.date]){byDate[t.date].forEach(function(o){if(used[o.i]&&o.i!==i&&o.t.cat==='賣股入帳')sellTxIds.push(o.t.id);});}
-      result.push({date:t.date,ticker:acct?acct.name:ticker,action:'sell',shares:shares,totalAmt:Math.abs(t.amt),stockAcctId:t.account_id,srcName:destName,txIds:sellTxIds});
-      return;
-    }
-    // leftover unpaired entries (購入股票/賣股入帳 without match)
-    if(t.cat==='購入股票'||t.cat==='賣股入帳'){
-      used[i]=true;
-      // already consumed by pairing above, skip
-      return;
-    }
+  txList.forEach(function(t){
+    if(['初始餘額','買入股票','賣出股票'].indexOf(t.cat)<0)return;
+    var account=allAccounts.find(function(a){return a.id===t.account_id;});
+    if(!account||!account.sk||!account.sk.ticker)return;
+    var ticker=_extractTicker(t),sell=t.cat==='賣出股票';
+    var pairedCat=sell?'賣股入帳':'購入股票';
+    var candidates=txList.filter(function(p){
+      return p.cat===pairedCat&&p.date===t.date&&p.account_id!==t.account_id&&_extractTicker(p)===ticker;
+    });
+    // Exact amounts are mandatory for normal trades. Initial balances may be
+    // market valuations, so only a unique ticker/date candidate is safe there.
+    if(t.cat!=='初始餘額')candidates=candidates.filter(function(p){return Math.abs(p.amt)===Math.abs(t.amt);});
+    var sameTrades=txList.filter(function(p){return p.cat===t.cat&&p.date===t.date&&_extractTicker(p)===ticker&&Math.abs(p.amt)===Math.abs(t.amt);});
+    var ambiguous=candidates.length>1||(candidates.length&&sameTrades.length>1);
+    var pair=!ambiguous&&candidates.length===1&&!used[candidates[0].id]?candidates[0]:null;
+    if(candidates.length===1&&used[candidates[0].id])ambiguous=true;
+    if(pair)used[pair.id]=true;
+    var shares=((t.note||'').match(/([+-]?[\d.]+)\s*股/)||[])[1]||'';
+    var source=pair?allAccounts.find(function(a){return a.id===pair.account_id;}):null;
+    result.push({date:t.date,ticker:account.name||ticker,action:sell?'sell':t.cat==='初始餘額'?'init':'buy',shares:Math.abs(Number(shares)),totalAmt:Math.abs(t.amt),stockAcctId:t.account_id,srcName:source?source.name:'',txIds:pair?[t.id,pair.id]:[t.id],ambiguous:!!ambiguous});
   });
   return result;
 }
@@ -2720,10 +2754,10 @@ function submitStock(){
     var newFee=oldSk.fee+fee;
     var newMktVal=isUs?Math.round(totalShares*curPrice*st.fxRate):Math.round(totalShares*curPrice);
     var sFundSrc=parseInt($('s-fund-source').value)||null;
-    var updatedSk=Object.assign({},oldSk,{shares:totalShares,avgPrice:Math.round(newAvg*1000)/1000,paid:newPaid,fee:newFee,curPrice:curPrice});
+    var updatedSk=Object.assign(cloneStockData(oldSk),{shares:totalShares,avgPrice:Math.round(newAvg*1000)/1000,paid:newPaid,fee:newFee,curPrice:curPrice});
     if(sFundSrc) _addFundSource(updatedSk,sFundSrc,sh,paidNative);
     var promises=[];
-    promises.push(sb.from('accounts').update({balance:newMktVal,stock_data:updatedSk}).eq('id',existing.id));
+    promises.push(dbFrom('accounts').update({balance:newMktVal,stock_data:updatedSk}).eq('id',existing.id));
     // transaction: stock purchase (skip balance update, already set above)
     promises.push(api('POST','/api/transactions',{
       date:new Date().toISOString().slice(0,10),
@@ -2743,7 +2777,7 @@ function submitStock(){
       $('m-stock').classList.remove('on');clearStockSelection('s');
       return Promise.all([loadAccounts(),loadTx()]);
     }).then(function(){
-      renderOverview();renderStocks();renderTx();toast('✓ '+tk+' 已加碼');
+      renderOverview();renderStocks();renderTx();renderAnalysis();toast('✓ '+tk+' 已加碼');
     });
     return;
   }
@@ -2936,7 +2970,7 @@ function renderTx(){
   $('tx-wrap').innerHTML=html;
   st.expandedTx=null;
   var _stockCats=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
-  var nonTransfer=txs.filter(function(t,i){return t.cat!=='轉帳'&&!skipIdx[i]&&_stockCats.indexOf(t.cat)<0;});
+  var nonTransfer=txs.filter(function(t,i){return !skipIdx[i]&&isReportTransaction(t);});
   var inc=nonTransfer.filter(function(t){return t.amt>0;}).reduce(function(s,t){return s+t.amt;},0);
   var exp=nonTransfer.filter(function(t){return t.amt<0;}).reduce(function(s,t){return s+t.amt;},0);
   var bal=inc+exp;
@@ -2946,7 +2980,7 @@ function renderTx(){
   if(e)e.textContent=fmtN(cvt(Math.abs(exp)));
   var scCcy=$('sc-ccy');if(scCcy)scCcy.textContent=ccySym();
   // Re-apply search filters if active
-  if(_txFilterActive&&!_txDateRangeData){filterTxs();}
+  if(_txFilterActive){filterTxs();}
 }
 
 function delTransferPair(ev,idx){
@@ -2958,6 +2992,9 @@ function delTransferPair(ev,idx){
     if(j!==idx&&txs[j].cat==='轉帳'&&txs[j].date===t.date&&txs[j].amt===-t.amt)
       {pairIdx=j;break;}
   }
+  var matches=txs.filter(function(p){return p.id!==t.id&&p.cat==='轉帳'&&p.date===t.date&&p.amt===-t.amt;});
+  if(matches.length!==1){toast('無法唯一確認對應轉帳，未刪除資料。');return;}
+  pairIdx=txs.indexOf(matches[0]);
   var p1=api('DELETE','/api/transactions/'+t.id);
   var p2=pairIdx>=0?api('DELETE','/api/transactions/'+txs[pairIdx].id):Promise.resolve();
   Promise.all([p1,p2]).then(function(){
@@ -2970,7 +3007,7 @@ function delTransferPair(ev,idx){
 // ── Analysis page (dynamic) ──
 function renderAnalysis(){
   var _skCats=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
-  var nt=txs.filter(function(t){return t.cat!=='轉帳'&&_skCats.indexOf(t.cat)<0;});
+  var nt=txs.filter(function(t){return isReportTransaction(t);});
   var inc=nt.filter(function(t){return t.amt>0;}).reduce(function(s,t){return s+t.amt;},0);
   var exp=nt.filter(function(t){return t.amt<0;}).reduce(function(s,t){return s+t.amt;},0);
   var bal=inc+exp;
@@ -2992,7 +3029,7 @@ function renderAnalysis(){
 
 function renderDonut(type){
   var _skCats=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
-  var filtered=type==='exp'?txs.filter(function(t){return t.amt<0&&t.cat!=='轉帳'&&_skCats.indexOf(t.cat)<0;}):txs.filter(function(t){return t.amt>0&&t.cat!=='轉帳'&&_skCats.indexOf(t.cat)<0;});
+  var filtered=type==='exp'?txs.filter(function(t){return t.amt<0&&isReportTransaction(t);}):txs.filter(function(t){return t.amt>0&&isReportTransaction(t);});
   var total=filtered.reduce(function(s,t){return s+Math.abs(t.amt);},0);
 
   // Group by category
@@ -3071,7 +3108,9 @@ function saveTx(e,idx){
 function delTx(e,idx){
   e.stopPropagation();
   if(!confirm('確定刪除這筆記錄？'))return;
-  api('DELETE','/api/transactions/'+txs[idx].id).then(function(){
+  var tx=txs[idx];
+  if(['初始餘額','買入股票','賣出股票'].indexOf(tx.cat)>=0&&isStockAcct(tx.account_id))return deleteStockTransaction(tx.id);
+  return api('DELETE','/api/transactions/'+tx.id).then(function(){
     return Promise.all([loadTx(),loadAccounts()]);
   }).then(function(){
     st.expandedTx=null;renderTx();renderOverview();renderAnalysis();toast('已刪除');
@@ -3164,7 +3203,7 @@ function submitTx(){
   if(!cat){toast('請選擇類別');return;}
   var finalAmt=st.txType==='i'?Math.abs(amt):-Math.abs(amt);
   var acctId=parseInt($('f-acct').value)||null;
-  api('POST','/api/transactions',{
+  return api('POST','/api/transactions',{
     date:$('f-date').value||new Date().toISOString().slice(0,10),
     name:cat, category:cat, amount:finalAmt,
     note:$('f-note').value, icon:getCatIcon(cat),
@@ -3248,10 +3287,10 @@ function submitTxBuy(){
     var nFee=osk.fee+fee;
     curPrice=osk.curPrice||pr;
     var nMkt=isUs?Math.round(tShares*curPrice*st.fxRate):Math.round(tShares*curPrice);
-    var uSk=Object.assign({},osk,{shares:tShares,avgPrice:Math.round(nAvg*1000)/1000,paid:nPaid,fee:nFee});
+    var uSk=Object.assign(cloneStockData(osk),{shares:tShares,avgPrice:Math.round(nAvg*1000)/1000,paid:nPaid,fee:nFee});
     if(txbFundSrc) _addFundSource(uSk,txbFundSrc,sh,paidNative);
     var promises=[];
-    promises.push(sb.from('accounts').update({balance:nMkt,stock_data:uSk}).eq('id',existing.id));
+    promises.push(dbFrom('accounts').update({balance:nMkt,stock_data:uSk}).eq('id',existing.id));
     promises.push(api('POST','/api/transactions',{
       date:txDate,name:'買入股票',category:'買入股票',amount:-Math.round(paidTWD),
       note:tk+' +'+sh+'股 @'+pr,icon:'📈',recurring:false,account_id:existing.id,_skipBal:true
@@ -3265,7 +3304,7 @@ function submitTxBuy(){
     Promise.all(promises).then(function(){
       $('m-tx').classList.remove('on');
       return Promise.all([loadAccounts(),loadTx()]);
-    }).then(function(){renderOverview();renderStocks();renderTx();toast('✓ '+tk+' 已加碼');});
+    }).then(function(){renderOverview();renderStocks();renderTx();renderAnalysis();toast('✓ '+tk+' 已加碼');});
   } else {
     // create new stock account
     var mktVal=isUs?Math.round(sh*curPrice*st.fxRate):Math.round(sh*curPrice);
@@ -3292,7 +3331,7 @@ function submitTxBuy(){
         $('m-tx').classList.remove('on');
         return Promise.all([loadAccounts(),loadTx()]);
       });
-    }).then(function(){renderOverview();renderStocks();renderTx();toast('✓ '+tk+' 已新增');});
+    }).then(function(){renderOverview();renderStocks();renderTx();renderAnalysis();toast('✓ '+tk+' 已新增');});
   }
 }
 function populateTxSellStock(){
@@ -3386,15 +3425,15 @@ function submitTxSell(){
   var remainFee=remainShares>0?osk.fee*(remainShares/osk.shares):0;
   var curPrice=osk.curPrice||pr;
   var newMkt=remainShares>0?(isUs?Math.round(remainShares*curPrice*st.fxRate):Math.round(remainShares*curPrice)):0;
-  var uSk=Object.assign({},osk,{shares:remainShares,paid:remainPaid,fee:remainFee});
-  _reduceFundSources(uSk,sh);
+  var uSk=Object.assign(cloneStockData(osk),{shares:remainShares,paid:remainPaid,fee:remainFee});
+  _reduceFundSources(uSk,sh,osk.shares);
 
   var promises=[];
   if(remainShares>0){
-    promises.push(sb.from('accounts').update({balance:newMkt,stock_data:uSk}).eq('id',it.id));
+    promises.push(dbFrom('accounts').update({balance:newMkt,stock_data:uSk}).eq('id',it.id));
   } else {
-    // fully sold - delete the account
-    promises.push(sb.from('accounts').delete().eq('id',it.id));
+    // Keep the account so sale history and foreign keys remain intact.
+    promises.push(dbFrom('accounts').update({balance:0,stock_data:uSk}).eq('id',it.id));
   }
   // sell transaction on the stock account
   promises.push(api('POST','/api/transactions',{
@@ -3408,11 +3447,11 @@ function submitTxSell(){
       note:tk+' -'+sh+'股',icon:'💰',recurring:false,account_id:destId
     }));
   }
-  Promise.all(promises).then(function(){
+  return Promise.all(promises).then(function(){
     $('m-tx').classList.remove('on');
     return Promise.all([loadAccounts(),loadTx()]);
   }).then(function(){
-    renderOverview();renderStocks();renderTx();
+    renderOverview();renderStocks();renderTx();renderAnalysis();
     toast('✓ '+tk+(remainShares>0?' 已賣出 '+sh+'股':' 已全部賣出'));
   });
 }
@@ -3454,7 +3493,7 @@ function openSkInventory(acctId){
   // fetch all transactions for this account
   $('ski-list').innerHTML='<div style="text-align:center;padding:20px;color:var(--fg3);font-size:12px">載入中…</div>';
   $('m-sk-inventory').classList.add('on');
-  sb.from('transactions').select('*').eq('account_id',acctId).order('date',{ascending:false}).order('id',{ascending:false}).then(function(res){
+  dbFrom('transactions').select('*').eq('account_id',acctId).order('date',{ascending:false}).order('id',{ascending:false}).then(function(res){
     var txArr=res.data||[];
     if(!txArr.length){$('ski-list').innerHTML='<div style="text-align:center;padding:20px;color:var(--fg3);font-size:12px">尚無交易紀錄</div>';return;}
     var html='';
@@ -3502,7 +3541,7 @@ function openSkInventoryEdit(txId,acctId){
   if(el.querySelector('.ski-edit-form'))return;
   var sk=acct.sk||{},isUs=sk.isUs,tk=sk.ticker||'';
   // fetch original tx + find paired 購入股票 tx (same date, same ticker in note)
-  sb.from('transactions').select('*').eq('id',txId).single().then(function(r){
+  dbFrom('transactions').select('*').eq('id',txId).single().then(function(r){
     if(!r.data)return;
     var tx=r.data;
     var note=tx.note||'';
@@ -3513,9 +3552,11 @@ function openSkInventoryEdit(txId,acctId){
     var curDate=tx.date||'';
     var isSell=tx.category==='賣出股票';
     // find paired transaction (購入股票 or 賣出入帳 on another account, same date+ticker)
-    var pairedCat=isSell?'賣出入帳':'購入股票';
-    return sb.from('transactions').select('*').eq('user_id',st.userId).eq('date',curDate).eq('category',pairedCat).like('note','%'+tk+'%').then(function(pr){
-      var paired=(pr.data||[]).find(function(p){return p.account_id!==acctId&&Math.abs(p.amount)===Math.abs(tx.amount);});
+    var pairedCat=isSell?'賣股入帳':'購入股票';
+    return dbFrom('transactions').select('*').eq('user_id',st.userId).eq('date',curDate).eq('category',pairedCat).like('note','%'+tk+'%').then(function(pr){
+      var candidates=(pr.data||[]).filter(function(p){return p.account_id!==acctId&&_extractTicker({note:p.note,name:p.name})===tk&&(tx.category==='初始餘額'||Math.abs(p.amount)===Math.abs(tx.amount));});
+      if(candidates.length>1){toast('同日有多筆相同股票收付款，請先核對，避免修改到其他交易。');return;}
+      var paired=candidates[0];
       var pairedId=paired?paired.id:null;
       var pairedAcctId=paired?paired.account_id:null;
       _buildSkiEditForm(el,tx,txId,acctId,isSell,isUs,curSh,curPr,curAmt,curDate,pairedId,pairedAcctId);
@@ -3643,37 +3684,39 @@ function saveSkInventoryEdit(txId,acctId){
   var acct=allAccounts.find(function(a){return a.id===acctId;});
   if(!acct||!acct.sk){toast('找不到持股帳戶');return;}
   var sk=acct.sk,isUs=sk.isUs,tk=sk.ticker;
+  var fundingIds=Object.keys(_getFundSources(sk));
+  if(fundingIds.length>1||(fundingIds.length===1&&Number(fundingIds[0])!==newFundId)||(fundingIds.length===0&&newFundId&&sh!==sk.shares)){toast('請從持股帳戶編輯資金來源；此交易不能單獨重分配整個持股。');return Promise.resolve(false);}
   var amtTWD=amt;
   if(ccy==='USD') amtTWD=Math.round(amt*st.fxRate);
   else amtTWD=Math.round(amt);
   var noteStr=tk+' '+(sh>0?'+':'')+sh+'股 @'+pr;
   var amtSigned=amtTWD;
   var isSellTx=false;
-  sb.from('transactions').select('category,amount').eq('id',txId).single().then(function(r){
+  return dbFrom('transactions').select('category,amount,note').eq('id',txId).single().then(function(r){
     if(!r.data)return;
     isSellTx=r.data.category==='賣出股票';
     amtSigned=isSellTx?Math.abs(amtTWD):-Math.abs(amtTWD);
-    var upd={amount:amtSigned,note:noteStr};
+    var upd={amount:amtSigned,note:noteStr+((r.data.note||'').indexOf('[動態提領]')>=0?' [動態提領]':'')};
     if(newDate) upd.date=newDate;
-    return sb.from('transactions').update(upd).eq('id',txId);
+    return dbFrom('transactions').update(upd).eq('id',txId);
   }).then(function(){
     // handle paired source account transaction
     var promises=[];
     var pairedAmt=isSellTx?Math.abs(amtTWD):-Math.abs(amtTWD);
-    var pairedCat=isSellTx?'賣出入帳':'購入股票';
+    var pairedCat=isSellTx?'賣股入帳':'購入股票';
     var pairedNote=tk;
     if(oldPairedId&&newSrcId){
       // update existing paired tx: move to new account, update amount/date
       var pUpd={amount:pairedAmt,account_id:newSrcId,note:pairedNote};
       if(newDate) pUpd.date=newDate;
-      promises.push(sb.from('transactions').update(pUpd).eq('id',oldPairedId));
+      promises.push(api('PUT','/api/transactions/'+oldPairedId,pUpd));
     } else if(oldPairedId&&!newSrcId){
       // remove paired tx (user cleared source account)
-      promises.push(sb.from('transactions').delete().eq('id',oldPairedId));
+      promises.push(api('DELETE','/api/transactions/'+oldPairedId));
     } else if(!oldPairedId&&newSrcId){
       // create new paired tx
-      promises.push(sb.from('transactions').insert({
-        user_id:st.userId,date:newDate||new Date().toISOString().slice(0,10),
+      promises.push(api('POST','/api/transactions',{
+        date:newDate||new Date().toISOString().slice(0,10),
         name:pairedCat,category:pairedCat,amount:pairedAmt,
         note:pairedNote,icon:isSellTx?'📉':'📈',recurring:false,account_id:newSrcId
       }));
@@ -3681,7 +3724,7 @@ function saveSkInventoryEdit(txId,acctId){
     return Promise.all(promises);
   }).then(function(){
     // recalculate stock_data from ALL transactions
-    return sb.from('transactions').select('*').eq('account_id',acctId).order('date').order('id');
+    return dbFrom('transactions').select('*').eq('account_id',acctId).order('date').order('id');
   }).then(function(res){
     var txArr=res.data||[];
     var totalShares=0,totalPaid=0,totalFee=0,weightedCost=0;
@@ -3717,16 +3760,16 @@ function saveSkInventoryEdit(txId,acctId){
       var paidNative=isUs?amtTWD/st.fxRate:amtTWD;
       if(!updSk.fundSources) updSk.fundSources={};
       // simplified: set this fund source (full rebuild would need per-tx tracking)
-      _addFundSource(updSk,newFundId,sh,Math.abs(paidNative));
+      updSk.fundSources={};updSk.fundSources[newFundId]={shares:totalShares,paid:totalPaid};
     }
-    return sb.from('accounts').update({balance:newMkt,stock_data:updSk}).eq('id',acctId).then(function(){
+    return dbFrom('accounts').update({balance:newMkt,stock_data:updSk}).eq('id',acctId).then(function(){
       acct.sk=updSk;acct.bal=newMkt;
     });
   }).then(function(){
     toast('✓ 已更新');
     return Promise.all([loadAccounts(),loadTx()]);
   }).then(function(){
-    renderStocks();renderOverview();updateHero();renderTx();
+    renderStocks();renderOverview();updateHero();renderTx();renderAnalysis();
     openSkInventory(acctId);
   });
 }
@@ -3878,11 +3921,12 @@ function reorderItems(fromId,toId){
   categories.splice(fi,1);
   var newTi=categories.indexOf(toCat);
   categories.splice(newTi+(fi<ti?1:0),0,fromCat);
+  var groupChanged=fromCat.cat_group!==grp;
   fromCat.cat_group=grp;
   for(var i=0;i<categories.length;i++) categories[i].sort_order=i;
   var ids=categories.map(function(x){return x.id;});
   var updates=[api('POST','/api/categories/reorder',{ids:ids})];
-  if(fromCat.cat_group!==grp) updates.push(api('PUT','/api/categories/'+fromId,{cat_group:grp}));
+  if(groupChanged) updates.push(api('PUT','/api/categories/'+fromId,{cat_group:grp}));
   Promise.all(updates).then(function(){renderCatManager();});
 }
 
@@ -4203,7 +4247,7 @@ function selectMonth(year,month){
   // clear date range filter on month change
   if(_txDateRangeData){_txDateRangeData=null;_txFilterActive=false;_txFiltered=null;var df=$('txDateFrom');if(df)df.value='';var dt=$('txDateTo');if(dt)dt.value='';}
   loadTx().then(function(){
-    renderTx();
+    renderTx();renderStocks();
     // reload analysis period data if needed
     if(_anlPeriod!=='month'){_loadAnlPeriodData(_anlPeriod);}
     else{renderAnalysis();}
@@ -4784,12 +4828,12 @@ function _addFundSource(sk,loanId,shares,paid){
   fs[loanId].shares+=shares;
   fs[loanId].paid+=paid;
 }
-function _reduceFundSources(sk,soldShares){
+function _reduceFundSources(sk,soldShares,previousShares){
   var fs=_getFundSources(sk);
   var keys=Object.keys(fs);
   if(!keys.length) return;
-  if(!sk.fundSources) sk.fundSources=Object.assign({},fs);
-  var totalShares=sk.shares;
+  sk.fundSources=JSON.parse(JSON.stringify(fs));
+  var totalShares=previousShares==null?sk.shares:previousShares;
   var ratio=totalShares>0?soldShares/totalShares:0;
   keys.forEach(function(lid){
     var f=sk.fundSources[lid];
@@ -5279,7 +5323,7 @@ function appInit(){
       // New user — create default profile with owner_auth_id
       fixUser=sb.auth.getUser().then(function(au){
         var authId=au.data&&au.data.user?au.data.user.id:null;
-        return sb.from('users').insert({name:'我',owner_auth_id:authId}).select().single().then(function(res){
+        return dbFrom('users').insert({name:'我',owner_auth_id:authId}).select().single().then(function(res){
           if(res.data){
             st.userId=res.data.id;
             localStorage.setItem('ft_uid',res.data.id);
@@ -5310,7 +5354,7 @@ function appInit(){
       upsertNetWorthSnapshot();
       api('POST','/api/loans/auto-pay',{}).then(function(res){
         if(res.created&&res.created.length>0){
-          loadAll().then(function(){renderOverview();renderTx();});
+          loadAll().then(refreshOpenViews);
           res.created.forEach(function(c){
             toast('已自動記錄 '+c.account+' 第'+c.period+'期還款');
           });
@@ -5883,14 +5927,14 @@ var retireYears=[];
 var _retExpanded={};
 
 function loadRetireConfig(){
-  return sb.from('retirement_config').select('*').eq('user_id',st.userId).single().then(function(res){
+  return dbFrom('retirement_config').select('*').eq('user_id',st.userId).maybeSingle().then(function(res){
     retireConf=res.data||null;
     return retireConf;
   });
 }
 
 function loadRetireYears(){
-  return sb.from('retirement_years').select('*').eq('user_id',st.userId).order('year',{ascending:true}).then(function(res){
+  return dbFrom('retirement_years').select('*').eq('user_id',st.userId).order('year',{ascending:true}).then(function(res){
     retireYears=res.data||[];
     return retireYears;
   });
@@ -5900,7 +5944,7 @@ function getStockTotal(){
   var total=0;
   if(data.invest&&data.invest.items){
     data.invest.items.forEach(function(it){
-      if(it.sk)total+=acctVal(it);
+      if(it.sk&&it.sk.ticker)total+=acctVal(it);
     });
   }
   return Math.round(total);
@@ -5990,7 +6034,7 @@ function saveRetireConfig(){
   var r0=parseFloat($('ret-r0').value)||0;
   var inf=parseFloat($('ret-inf').value)||2;
   if(!p0||!r0){toast('請填入本金與提領率');return;}
-  sb.from('retirement_config').upsert({
+  dbFrom('retirement_config').upsert({
     user_id:st.userId,
     initial_principal:p0,
     withdrawal_rate:r0,
@@ -6005,8 +6049,8 @@ function saveRetireConfig(){
 function resetRetireConfig(){
   if(!confirm('確定要重設退休設定？所有歷年紀錄也會一併刪除。'))return;
   Promise.all([
-    sb.from('retirement_config').delete().eq('user_id',st.userId),
-    sb.from('retirement_years').delete().eq('user_id',st.userId)
+    dbFrom('retirement_config').delete().eq('user_id',st.userId),
+    dbFrom('retirement_years').delete().eq('user_id',st.userId)
   ]).then(function(){
     retireConf=null;
     retireYears=[];
@@ -6027,7 +6071,7 @@ function calcRetireYear(){
   // fetch transactions this year with [動態提領] tag
   var yrStart=yr+'-01-01';
   var yrEnd=yr+'-12-31';
-  sb.from('transactions').select('*').eq('user_id',st.userId).gte('date',yrStart).lte('date',yrEnd).like('note','%[動態提領]%').then(function(res){
+  dbFrom('transactions').select('*').eq('user_id',st.userId).gte('date',yrStart).lte('date',yrEnd).like('note','%[動態提領]%').then(function(res){
     var txArr=res.data||[];
     var actualWithdrawal=0;
     txArr.forEach(function(tx){actualWithdrawal+=Math.abs(tx.amount);});
@@ -6119,7 +6163,7 @@ function calcRetireYear(){
       calc_detail:detail
     };
 
-    sb.from('retirement_years').upsert(row,{onConflict:'user_id,year'}).then(function(res2){
+    dbFrom('retirement_years').upsert(row,{onConflict:'user_id,year'}).then(function(res2){
       if(res2.error){toast('儲存失敗: '+res2.error.message);return;}
       toast('✓ '+yr+' 年度已計算');
       renderRetire();
@@ -6224,7 +6268,7 @@ function calcRetireYearManual(){
     calc_detail:detail
   };
 
-  sb.from('retirement_years').upsert(row,{onConflict:'user_id,year'}).then(function(res){
+  dbFrom('retirement_years').upsert(row,{onConflict:'user_id,year'}).then(function(res){
     if(res.error){toast('儲存失敗: '+res.error.message);return;}
     toast('✓ '+yr+' 年度已儲存');
     renderRetire();
@@ -6233,7 +6277,7 @@ function calcRetireYearManual(){
 
 function deleteRetireYear(yr){
   if(!confirm('確定要刪除 '+yr+' 年度的紀錄嗎？'))return;
-  sb.from('retirement_years').delete().eq('user_id',st.userId).eq('year',yr).then(function(res){
+  dbFrom('retirement_years').delete().eq('user_id',st.userId).eq('year',yr).then(function(res){
     if(res.error){toast('刪除失敗: '+res.error.message);return;}
     retireYears=retireYears.filter(function(r){return r.year!==yr;});
     delete _retExpanded[yr];
@@ -6657,7 +6701,8 @@ function _renderBudgetFields(mode){
 
 function saveBudgets(){
   var mode=localStorage.getItem('ft_budget_mode_'+st.userId)||'category';
-  var obj={};
+  var obj=JSON.parse(localStorage.getItem('ft_budgets_'+st.userId)||'{}');
+  if(mode==='category'||mode==='both')Object.keys(obj).forEach(function(k){if(k.indexOf('c_')===0)delete obj[k];});
   if(mode==='total'||mode==='both'){
     var totalInput=$('set-budget-total');
     if(totalInput)obj._total=parseFloat(totalInput.value)||0;
@@ -6807,10 +6852,10 @@ function delRecurItem(idx){
 
 function _renderBackupContent(){
   var h='<div style="display:flex;flex-direction:column;gap:12px">';
-  h+='<div style="font-size:13px;color:var(--fg2)">匯出所有資料為 JSON 檔案，或從備份檔還原資料。</div>';
+  h+='<div style="font-size:13px;color:var(--fg2)">匯出所有資料為 JSON 檔案。還原功能維護中，暫時無法匯入。</div>';
   h+='<div style="display:flex;gap:10px;flex-wrap:wrap">';
   h+='<button class="set-add-btn" onclick="backupExport()" style="flex:1;min-width:120px">匯出備份</button>';
-  h+='<button class="set-add-btn" onclick="document.getElementById(\'backup-file-input\').click()" style="flex:1;min-width:120px;background:var(--bg3);color:var(--fg0)">匯入備份</button>';
+  h+='<button class="set-add-btn" disabled style="flex:1;min-width:120px;background:var(--bg3);color:var(--fg2)">還原功能維護中</button>';
   h+='</div>';
   h+='<input type="file" id="backup-file-input" accept=".json" style="display:none" onchange="backupImport(this)">';
   h+='<div id="backup-status" style="font-size:12px;color:var(--fg3)"></div>';
@@ -6824,13 +6869,14 @@ function backupExport(){
   var tables=['users','accounts','transactions','categories','groups','retirement_config','retirement_years','budgets','recurring_transactions','net_worth_snapshots'];
   var backup={version:1,exported_at:new Date().toISOString(),user_id:st.userId,data:{}};
   var promises=tables.map(function(t){
-    return sb.from(t).select('*').eq('user_id',st.userId).then(function(res){
+    return dbFrom(t).select('*').eq(t==='users'?'id':'user_id',st.userId).then(function(res){
       backup.data[t]=res.data||[];
     });
   });
-  // users table uses 'id' not 'user_id'
-  promises[0]=sb.from('users').select('*').eq('id',st.userId).then(function(res){
-    backup.data.users=res.data||[];
+  backup.local_settings={};
+  ['ft_budgets_','ft_budget_mode_','ft_recur_items_','ft_recurring_mode_','ft_calc_history_','ft_theme_'].forEach(function(prefix){
+    var value=localStorage.getItem(prefix+st.userId);
+    if(value!==null)backup.local_settings[prefix]=value;
   });
   Promise.all(promises).then(function(){
     var json=JSON.stringify(backup,null,2);
@@ -6843,82 +6889,14 @@ function backupExport(){
 }
 
 function backupImport(input){
-  if(!input.files||!input.files[0]) return;
-  var file=input.files[0];
-  var reader=new FileReader();
-  reader.onload=function(e){
-    try{
-      var backup=JSON.parse(e.target.result);
-      if(!backup.data||!backup.data.users){
-        toast('備份檔格式無效');return;
-      }
-      if(!confirm('確定要還原備份嗎？這將清除目前所有資料並以備份內容取代。')){
-        input.value='';return;
-      }
-      _doRestore(backup);
-    }catch(err){
-      toast('無法讀取備份檔：'+err.message);
-    }
-    input.value='';
-  };
-  reader.readAsText(file);
+  toast('還原功能維護中，暫時無法匯入；匯出備份仍可使用。');
+  if(input)input.value='';
 }
 
 function _doRestore(backup){
-  var status=$('backup-status');
-  if(status) status.textContent='正在還原...';
-  var uid=st.userId;
-  // Order matters: delete child tables first
-  var delTables=['net_worth_snapshots','recurring_transactions','budgets','retirement_years','retirement_config','transactions','groups','categories','accounts'];
-  var delChain=Promise.resolve();
-  delTables.forEach(function(t){
-    delChain=delChain.then(function(){
-      return sb.from(t).delete().eq('user_id',uid);
-    });
-  });
-  delChain.then(function(){
-    // Update user record
-    var u=backup.data.users&&backup.data.users[0];
-    if(u){
-      return sb.from('users').update({name:u.name,avatar:u.avatar}).eq('id',uid);
-    }
-  }).then(function(){
-    // Insert data in order: accounts first, then rest
-    var insertTables=['accounts','categories','groups','transactions','retirement_config','retirement_years','budgets','recurring_transactions','net_worth_snapshots'];
-    var chain=Promise.resolve();
-    insertTables.forEach(function(t){
-      chain=chain.then(function(){
-        var rows=backup.data[t];
-        if(!rows||!rows.length) return;
-        // Remap user_id and strip id (let DB generate)
-        var mapped=rows.map(function(r){
-          var copy={};
-          Object.keys(r).forEach(function(k){
-            if(k==='id') return; // skip auto-generated id
-            copy[k]=r[k];
-          });
-          copy.user_id=uid;
-          return copy;
-        });
-        return sb.from(t).insert(mapped).then(function(res){
-          if(res.error) console.error('Restore insert error ('+t+'):',res.error);
-        });
-      });
-    });
-    return chain;
-  }).then(function(){
-    if(status) status.textContent='還原完成！重新載入中...';
-    toast('備份已還原');
-    setTimeout(function(){
-      loadAll().then(function(){
-        renderOverview();renderStocks();renderTx();renderAnalysis();renderSettings();
-        upsertNetWorthSnapshot();
-        toast('資料已重新載入');
-      });
-    },500);
-  });
+  toast('還原功能維護中，暫時無法匯入；匯出備份仍可使用。');
+  return Promise.resolve(false);
 }
-
 // ══════════════════════════════════════════════════════
 // ── Feature: Transaction Search & Filter ──
 // ══════════════════════════════════════════════════════
@@ -6955,14 +6933,16 @@ function clearTxFilters(){
 }
 
 function filterTxDateRange(){
+  var uid=st.userId;
   var from=$('txDateFrom').value;
   var to=$('txDateTo').value;
   if(from&&to){
     // fetch transactions across date range from supabase
-    sb.from('transactions').select('*').eq('user_id',st.userId)
+    return dbFrom('transactions').select('*').eq('user_id',st.userId)
       .gte('date',from).lte('date',to)
       .order('date',{ascending:false}).order('id',{ascending:false})
       .then(function(res){
+        if(uid!==st.userId||from!==$('txDateFrom').value||to!==$('txDateTo').value)return;
         _txDateRangeData=(res.data||[]).map(function(r){
           return {id:r.id,date:r.date,name:r.name,cat:r.category,amt:r.amount,note:r.note||'',icon:r.icon||'',rec:!!r.recurring,account_id:r.account_id};
         });
@@ -7020,7 +7000,7 @@ function renderTxFiltered(list){
   $('tx-wrap').innerHTML=html;
   // Update summary from filtered data
   var _skCats2=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
-  var nt=list.filter(function(t){return t.cat!=='轉帳'&&_skCats2.indexOf(t.cat)<0;});
+  var nt=list.filter(function(t){return isReportTransaction(t);});
   var inc=nt.filter(function(t){return t.amt>0;}).reduce(function(s,t){return s+t.amt;},0);
   var exp=nt.filter(function(t){return t.amt<0;}).reduce(function(s,t){return s+t.amt;},0);
   var bal=inc+exp;
@@ -7064,16 +7044,18 @@ function _getYearRange(year){
 }
 
 function _loadAnlPeriodData(period){
+  var uid=st.userId,year=st.curYear,month=st.curMonth;
   var range;
   if(period==='quarter'){
     range=_getQuarterRange(st.curYear,st.curMonth);
   } else {
     range=_getYearRange(st.curYear);
   }
-  sb.from('transactions').select('*').eq('user_id',st.userId)
+  return dbFrom('transactions').select('*').eq('user_id',st.userId)
     .gte('date',range.from).lte('date',range.to)
     .order('date',{ascending:false}).order('id',{ascending:false})
     .then(function(res){
+      if(uid!==st.userId||year!==st.curYear||month!==st.curMonth||period!==_anlPeriod)return;
       _anlTxCache=(res.data||[]).map(function(r){
         return {id:r.id,date:r.date,name:r.name,cat:r.category,amt:r.amount,note:r.note||'',icon:r.icon||'',rec:!!r.recurring,account_id:r.account_id};
       });
@@ -7084,7 +7066,7 @@ function _loadAnlPeriodData(period){
 function _renderAnlPeriod(period,range){
   var txData=_anlTxCache||[];
   var _skC=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
-  var nt=txData.filter(function(t){return t.cat!=='轉帳'&&_skC.indexOf(t.cat)<0;});
+  var nt=txData.filter(function(t){return isReportTransaction(t);});
   var inc=nt.filter(function(t){return t.amt>0;}).reduce(function(s,t){return s+t.amt;},0);
   var exp=nt.filter(function(t){return t.amt<0;}).reduce(function(s,t){return s+t.amt;},0);
   var bal=inc+exp;
@@ -7131,7 +7113,7 @@ function _renderAnlPeriod(period,range){
 
 function _renderDonutPeriod(type,txData){
   var _skC=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
-  var filtered=type==='exp'?txData.filter(function(t){return t.amt<0&&t.cat!=='轉帳'&&_skC.indexOf(t.cat)<0;}):txData.filter(function(t){return t.amt>0&&t.cat!=='轉帳'&&_skC.indexOf(t.cat)<0;});
+  var filtered=type==='exp'?txData.filter(function(t){return t.amt<0&&isReportTransaction(t);}):txData.filter(function(t){return t.amt>0&&isReportTransaction(t);});
   var total=filtered.reduce(function(s,t){return s+Math.abs(t.amt);},0);
   var catMap={};
   filtered.forEach(function(t){
@@ -7169,7 +7151,7 @@ function _renderMonthlyBarChart(txData){
   for(var m=0;m<12;m++){
     var prefix=st.curYear+'-'+MONTHS[m];
     var _skC=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
-    var mTxs=txData.filter(function(t){return t.date.indexOf(prefix)===0&&t.amt<0&&t.cat!=='轉帳'&&_skC.indexOf(t.cat)<0;});
+    var mTxs=txData.filter(function(t){return t.date.indexOf(prefix)===0&&t.amt<0&&isReportTransaction(t);});
     var total=mTxs.reduce(function(s,t){return s+Math.abs(t.amt);},0);
     monthlyExp.push(total);
     labels.push((m+1)+'月');
@@ -7184,7 +7166,7 @@ function _renderQuarterBarChart(txData,range){
   for(var m=range.startM;m<=range.endM;m++){
     var prefix=st.curYear+'-'+MONTHS[m];
     var _skC2=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
-    var mTxs=txData.filter(function(t){return t.date.indexOf(prefix)===0&&t.amt<0&&t.cat!=='轉帳'&&_skC2.indexOf(t.cat)<0;});
+    var mTxs=txData.filter(function(t){return t.date.indexOf(prefix)===0&&t.amt<0&&isReportTransaction(t);});
     var total=mTxs.reduce(function(s,t){return s+Math.abs(t.amt);},0);
     monthlyExp.push(total);
     labels.push((m+1)+'月');
@@ -7252,7 +7234,7 @@ renderAnalysis=function(){
   _origRenderAnalysis();
   // restore month labels after original render
   var _skC3=['買入股票','購入股票','賣出股票','賣股入帳','初始餘額'];
-  var nt=txs.filter(function(t){return t.cat!=='轉帳'&&_skC3.indexOf(t.cat)<0;});
+  var nt=txs.filter(function(t){return isReportTransaction(t);});
   var incV=nt.filter(function(t){return t.amt>0;}).reduce(function(s,t){return s+t.amt;},0);
   var expV=nt.filter(function(t){return t.amt<0;}).reduce(function(s,t){return s+t.amt;},0);
   if(expLbl) expLbl.innerHTML='月支出 <b id="anl-exp" style="color:#fff;font-weight:600">'+fmtN(cvt(Math.abs(expV)))+'</b>';
@@ -7302,7 +7284,7 @@ function _getExportData(context){
     });
   } else if(context==='anl'){
     var source2=(_anlPeriod!=='month'&&_anlTxCache)?_anlTxCache:txs;
-    source2.filter(function(t){return t.cat!=='轉帳';}).forEach(function(t){
+    source2.filter(isReportTransaction).forEach(function(t){
       rows.push({
         date:t.date,
         name:t.name||t.cat,
