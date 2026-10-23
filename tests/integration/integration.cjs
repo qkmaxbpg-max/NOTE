@@ -190,6 +190,13 @@ async function test(name,run){try{await run();await drain();results.push({name,p
   await db.exec('SET ROLE anon');try{await rejectClean(()=>db.query('select public.fintrack_sync_loans(null)'));}finally{await db.exec('SET ROLE authenticated');}
  });
 
+
+ await test('interest-only loans without maturity retain five paid periods and interest in the actual card',async()=>{
+  const ld=F.initial({...base,principal:100000,annual_rate:12,total_months:0,repay_type:'只繳利息（無固定期限）'});
+  await w.api('POST','/api/accounts',{category:'debt',name:'無固定期利息測試',type:'信用貸款',balance:-100000,loan_data:ld});await w._clientAutoPayLoans();await w.loadAll();w.renderCreditAnalysis();
+  const card=[...w.$('lev-credit').querySelectorAll('.lev-card')].find(x=>x.textContent.includes('無固定期利息測試'));assert(card.textContent.includes('已計 5 期'));const metric=[...card.querySelectorAll('.lev-metric')].find(x=>x.textContent.includes('累計利息'));assert(metric.textContent.includes('5,000'));assert.equal(card.querySelectorAll('tr.paid').length,5);
+ });
+
  function abs(n){return Math.abs(n);}
 
  const receipt={engine:'PGlite PostgreSQL + real supabase-js '+require('./node_modules/@supabase/supabase-js/package.json').version+' + jsdom DOM',schema:'Production columns and ownership RLS reproduced with fictional users only; HTTP API is a test adapter, not the live PostgREST service',requests:requests.length,results,unexpectedErrors:errors};

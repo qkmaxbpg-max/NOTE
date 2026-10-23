@@ -4881,7 +4881,7 @@ function renderCreditAnalysis(){
     var sched=ld.engine_version===2?FTLoans.current(ld):levAmortSchedule(ld.principal,ld.annual_rate,ld.total_months,ld.pmt_override,ld.repay_type);
     // Recorded repayments and account balance are authoritative. Calendar
     // elapsed time is a schedule, not evidence of a completed payment.
-    var paid=Math.max(0,Math.min(ld.paid_periods||0,ld.total_months||0));
+    var paid=Math.max(0,Math.min(ld.paid_periods||0,sched.length));
     var remaining=Math.abs(loan.bal);
     var cumInterest=0,cumPrincipal=0;
     for(var i=0;i<paid&&i<sched.length;i++){
